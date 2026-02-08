@@ -1,0 +1,17 @@
+# Pebble Build Artifacts
+build/
+.lock-waf_*
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# User Sensitive Data
+Boarding pass/
+*.png
+*.jpg
+*.jpeg
+!resources/images/*.png
+
+# Configuration
+config.log

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gemini Wallet Config</title>
+    <!-- Import bwip-js for barcode generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bwip-js/3.4.3/bwip-js-min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; background: #f2f2f7; color: #1c1c1e; }
+        .card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        input, select { width: 100%; padding: 12px; margin: 5px 0; border: 1px solid #e5e5ea; border-radius: 8px; box-sizing: border-box; font-size: 16px; background: #f2f2f7; }
+        button { width: 100%; padding: 14px; background: #007aff; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        button.remove { background: #ff3b30; width: auto; padding: 8px 12px; font-size: 14px; margin-top: 0; }
+        button.add { background: #34c759; margin-bottom: 30px; }
+        .btn-tiny { width: 30px; padding: 4px; font-size: 12px; background: #8e8e93; display: inline-block; margin-top: 0; }
+        .btn-tiny:disabled { opacity: 0.3; }
+        .order-btns { display: flex; align-items: center; }
+        .preview-canvas { display: none; /* Hidden, used for pixel reading */ }
+        .hint { font-size: 12px; color: #8e8e93; margin-top: -5px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h2>My Wallet</h2>
+    <div id="cards-container"></div>
+    <button class="add" onclick="addCard()">+ Add Card</button>
+    <button onclick="save()">Save & Sync to Watch</button>
+    
+    <!-- Hidden canvas for rendering -->
+    <canvas id="render-canvas" class="preview-canvas"></canvas>
+
+    <script>
+        // Formats: Must match C enum in common.h
+        // 0=Code128, 1=Code39, 2=EAN13, 3=QR, 4=Aztec, 5=PDF417
+        var FORMATS = [
+            {id: 0, name: "Code 128", bwip: "code128"},
+            {id: 1, name: "Code 39", bwip: "code39"},
+            {id: 2, name: "EAN-13", bwip: "ean13"},
+            {id: 3, name: "QR Code", bwip: "qrcode"},
+            {id: 4, name: "Aztec Code", bwip: "azteccode"},
+            {id: 5, name: "PDF417", bwip: "pdf417"}
+        ];
+
+        var cards = [];
+        try {
+            var hash = window.location.hash.substring(1);
+            if(hash) cards = JSON.parse(decodeURIComponent(hash));
+        } catch(e) {}
+
+        function render() {
+            var container = document.getElementById('cards-container');
+            container.innerHTML = '';
+            cards.forEach(function(card, idx) {
+                var el = document.createElement('div');
+                el.className = 'card';
+                
+                var opts = FORMATS.map(f => `<option value="${f.id}" ${card.format==f.id?'selected':''}>${f.name}</option>`).join('');
+                
+                // If it's a pre-rendered string (contains commas), show just the raw value part visually
+                var displayData = card.data;
+                if ((card.format == 4 || card.format == 5) && card.data.indexOf(',') > -1) {
+                     // It's encoded matrix data, maybe show a placeholder or the original if we had it.
+                     // For simplicity in this demo, we assume 'card.raw' holds user input if we add it, 
+                     // or we just clear 'data' if it looks like matrix data so user can re-enter.
+                     if(card.data.length > 50) displayData = "(Encoded Matrix Data)";
+                }
+
+                el.innerHTML = `
+                    <div class="card-header">
+                        <div class="order-btns">
+                            <button class="btn-tiny" onclick="move(${idx}, -1)" ${idx==0?'disabled':''}>↑</button>
+                            <button class="btn-tiny" onclick="move(${idx}, 1)" ${idx==cards.length-1?'disabled':''}>↓</button>
+                            <strong style="margin-left:5px">Card ${idx+1}</strong>
+                        </div>
+                        <button class="remove" onclick="remove(${idx})">Remove</button>
+                    </div>
+                    <input type="text" placeholder="Card Name (e.g. Flight BA123)" value="${card.name || ''}" onchange="update(${idx}, 'name', this.value)">
+                    <input type="text" placeholder="Description (e.g. Gate 12, Seat 4A)" value="${card.description || ''}" onchange="update(${idx}, 'description', this.value)">
+                    <select onchange="update(${idx}, 'format', this.value)">${opts}</select>
+                    <input type="text" placeholder="Data" value="${displayData}" onchange="update(${idx}, 'data', this.value)">
+                    <div class="hint">For Aztec/PDF417, data is encoded on Save.</div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        function update(idx, field, val) { 
+            cards[idx][field] = val; 
+            // If format changed to/from Aztec/PDF417, we might need to reset data logic
+            // For now, simple update.
+        }
+        
+        function move(idx, dir) {
+            var target = idx + dir;
+            if (target < 0 || target >= cards.length) return;
+            var temp = cards[idx];
+            cards[idx] = cards[target];
+            cards[target] = temp;
+            render();
+        }
+        
+        function addCard() { cards.push({name:'', data:'', format:0}); render(); }
+        function remove(idx) { cards.splice(idx, 1); render(); }
+        
+        // --- Matrix Generation ---
+        function generateMatrixData(text, formatId) {
+            return new Promise((resolve, reject) => {
+                var canvas = document.getElementById('render-canvas');
+                var bwipId = FORMATS.find(f => f.id == formatId).bwip;
+                
+                try {
+                    bwipjs.toCanvas(canvas, {
+                        bcid: bwipId,       // Barcode type
+                        text: text,         // Text to encode
+                        scale: 1,           // 1x scale (1 pixel per module)
+                        includetext: false, 
+                    });
+                    
+                    // Read pixels
+                    var w = canvas.width;
+                    var h = canvas.height;
+                    var ctx = canvas.getContext('2d');
+                    var imgData = ctx.getImageData(0, 0, w, h);
+                    var pixels = imgData.data; // RGBA
+                    
+                    // Convert to hex bitstream (row by row)
+                    var hex = "";
+                    var val = 0;
+                    var bitCount = 0;
+                    
+                    for(var r=0; r<h; r++) {
+                        for(var c=0; c<w; c++) {
+                            var idx = (r*w + c) * 4;
+                            // Check alpha or darkness. BWIP renders black on transparent/white.
+                            // If Alpha > 128 AND Red < 128, it is black.
+                            var rVal = pixels[idx];
+                            var gVal = pixels[idx+1];
+                            var bVal = pixels[idx+2];
+                            var aVal = pixels[idx+3];
+                            
+                            var isBlack = (aVal > 128) && (rVal < 128); 
+                            
+                            val = (val << 1) | (isBlack ? 1 : 0);
+                            bitCount++;
+                            
+                            if(bitCount == 4) {
+                                hex += val.toString(16).toUpperCase();
+                                val = 0;
+                                bitCount = 0;
+                            }
+                        }
+                    }
+                    // Flush remaining bits
+                    if(bitCount > 0) {
+                        val = val << (4 - bitCount);
+                        hex += val.toString(16).toUpperCase();
+                    }
+                    
+                    resolve(`${w},${h},${hex}`);
+                    
+                } catch (e) {
+                    console.error(e);
+                    reject(e);
+                }
+            });
+        }
+
+        async function save() {
+            var btn = document.querySelector('button[onclick="save()"]');
+            btn.innerText = "Processing...";
+            btn.disabled = true;
+
+            var finalCards = [];
+            
+            for(let c of cards) {
+                if(!c.name || !c.data) continue;
+                
+                let processedCard = { ...c };
+                
+                // If QR(3), Aztec(4) or PDF417(5), generate matrix data
+                if(c.format == 3 || c.format == 4 || c.format == 5) {
+                    try {
+                        // Check if data is NOT already encoded (doesn't start with number,number,)
+                        // Simple check: if user typed "M1DOE...", encode it.
+                        if(!c.data.match(/^\d+,\d+,[0-9A-F]+$/)) {
+                            console.log(`Encoding ${c.name} (${c.format})...`);
+                            processedCard.data = await generateMatrixData(c.data, c.format);
+                        }
+                    } catch(e) {
+                        alert(`Error encoding ${c.name}: ${e}`);
+                        btn.innerText = "Save & Sync";
+                        btn.disabled = false;
+                        return;
+                    }
+                }
+                finalCards.push(processedCard);
+            }
+
+            var json = JSON.stringify(finalCards);
+            location.href = 'pebblejs://close#' + encodeURIComponent(json);
+        }
+
+        render();
+    </script>
+</body>
+</html>

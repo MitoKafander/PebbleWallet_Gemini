@@ -1,0 +1,33 @@
+{
+  "name": "GeminiWallet",
+  "author": "Gemini & MitoKafander",
+  "version": "1.0.0",
+  "keywords": ["pebble-app", "wallet", "barcode", "offline", "aztec"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Gemini Wallet",
+    "uuid": "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b",
+    "sdkVersion": "3",
+    "enableMultiJS": false,
+    "targetPlatforms": ["aplite", "basalt", "chalk"],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "CMD_SYNC_START",
+      "CMD_SYNC_DATA",
+      "CMD_SYNC_COMPLETE",
+      "CMD_FETCH_CONFIG",
+      "KEY_INDEX",
+      "KEY_NAME",
+      "KEY_DESCRIPTION",
+      "KEY_DATA",
+      "KEY_FORMAT"
+    ],
+    "capabilities": ["configurable"],
+    "resources": {
+      "media": []
+    }
+  }
+}
