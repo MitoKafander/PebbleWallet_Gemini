@@ -1,41 +1,37 @@
-# GeminiWallet Project Summary (v1.1)
-*Final Stable Build - Feb 8, 2026*
+# GeminiWallet Project Summary (v1.2 Baseline)
+*Final Polished Build - Feb 8, 2026*
 
-This version represents the fully polished, multi-format wallet with verified boarding pass support and persistent storage.
+This version is the clean, secure, and fully functional baseline for GeminiWallet. It is 100% independent from the original PebbleWallet project.
 
 ## Core Features
-- **Broad Format Support**:
-    - **Aztec Code**: Full boarding pass support (pre-rendered on phone).
-    - **QR Code**: Supports all characters (lowercase, symbols) via phone-side pre-rendering.
+- **Comprehensive Format Support**:
+    - **Aztec Code**: Verified boarding pass support (pre-rendered on phone).
+    - **QR Code**: Now uses phone-side pre-rendering, allowing **lowercase letters, apostrophes, and symbols**.
     - **PDF417**: Supported via phone-side pre-rendering.
-    - **Code 128/39/EAN**: Basic 1D support.
-- **Offline First**: Cards are stored in the watch's **Persistent Storage** (Persist API). They load instantly even without a phone connection.
-- **High-Performance Rendering**: Uses **Run-Length Encoding (RLE)** drawing logic to render dense matrices (like 62x62 Aztec) in milliseconds without watch lag.
-- **UI Polish**: 
-    - **Description Field**: Custom subtitles for each card (e.g., "Seat 4A").
-    - **Clean Menu**: Hides messy hex strings; shows "Boarding Pass Data" or "QR Code" fallbacks.
-    - **Card Reordering**: Drag-and-drop style reordering on the phone settings page.
+    - **1D Codes**: Logic ready for Code 128/39/EAN.
+- **Offline First**: Cards are stored in the watch's **Persistent Storage** (Persist API).
+- **Smooth Rendering**: High-speed **Run-Length Encoding (RLE)** drawing loop.
+- **Advanced UI**: 
+    - **Description Field**: Custom subtitles for each card.
+    - **Smart Menu**: Automatically hides complex data strings; shows friendly fallbacks.
+    - **Card Reordering**: Live reordering (Up/Down buttons) on the settings page.
+- **Emulator Ready**: Support for the `return_to` bridge allows testing settings in Rebble Cloud without a physical phone.
 
-## Technical Architecture
-- **Watch (C)**: Modularized into `main.c`, `storage.c`, `qr.c`, and `barcodes.c`.
-- **Phone (JS)**: Uses the classic `pebble-js-app.js` path for maximum sideloading compatibility.
-- **Web (HTML)**: Integrates `bwip-js` for heavy-duty barcode encoding in the browser.
-- **Memory**: Optimized for **Aplite** (Original Pebble) with a 2048-byte AppMessage buffer and 1024-byte data segments.
-
-## Sideloading Compatibility
+## Technical Snapshot
 - **UUID**: `e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b`
 - **Version**: `1.0.0`
-- **Target Platforms**: `aplite`, `basalt`, `chalk`.
+- **Memory**: Optimized for **Aplite** (2KB buffer, 1KB data segments).
+- **Structure**: Modular C (`main.c`, `storage.c`, `qr.c`, `barcodes.c`) and standard JS path (`src/js/pebble-js-app.js`).
+
+## Sideloading Compatibility
+This version uses a fresh UUID and classic file paths to ensure the **Core Devices Pebble App** accepts it without "Sideloading Errors."
 
 ---
 
-## How to Revert to this Version
-If you ever make changes that break the app, you can restore this exact state by running these commands in the **Rebble Cloud terminal**:
+## Maintenance & Recovery
+- **Revert to Baseline**: `git reset --hard v1.2`
+- **Emergency Sync**: Use `SYNC_COMMANDS.txt` if Rebble Cloud sidebar gets out of sync.
+- **Publishing**: Prepared for submission to [dev-portal.rebble.io](https://dev-portal.rebble.io/).
 
-```bash
-git fetch --tags
-git reset --hard v1.1
-pebble clean && pebble build
-```
-
-This version is also tagged as **v1.1** on GitHub.
+---
+**Next Session Goal:** Publish to the Rebble App Store & implement final UI toggles (Invert Colors).
