@@ -25,7 +25,8 @@
       "KEY_DATA",
       "KEY_FORMAT",
       "KEY_WIDTH",
-      "KEY_HEIGHT"
+      "KEY_HEIGHT",
+      "KEY_INVERT"
     ],
     "capabilities": ["configurable"],
     "resources": {

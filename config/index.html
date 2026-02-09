@@ -16,22 +16,28 @@
         .btn-tiny { width: 30px; padding: 4px; font-size: 12px; background: #8e8e93; display: inline-block; margin-top: 0; }
         .btn-tiny:disabled { opacity: 0.3; }
         .order-btns { display: flex; align-items: center; }
-        .preview-canvas { display: none; /* Hidden, used for pixel reading */ }
+        .preview-canvas { display: none; }
         .hint { font-size: 12px; color: #8e8e93; margin-top: -5px; margin-bottom: 10px; }
+        .settings-row { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        label { font-weight: 600; }
+        .toggle { transform: scale(1.2); }
     </style>
 </head>
 <body>
+    <h2>App Settings</h2>
+    <div class="settings-row">
+        <label>Invert Colors (High Contrast)</label>
+        <input type="checkbox" id="invert-toggle" class="toggle" onchange="updateInvert(this.checked)">
+    </div>
+
     <h2>My Wallet</h2>
     <div id="cards-container"></div>
     <button class="add" onclick="addCard()">+ Add Card</button>
     <button onclick="save()">Save & Sync to Watch</button>
     
-    <!-- Hidden canvas for rendering -->
     <canvas id="render-canvas" class="preview-canvas"></canvas>
 
     <script>
-        // Formats: Must match C enum in common.h
-        // 0=Code128, 1=Code39, 2=EAN13, 3=QR, 4=Aztec, 5=PDF417
         var FORMATS = [
             {id: 0, name: "Code 128", bwip: "code128"},
             {id: 1, name: "Code 39", bwip: "code39"},
@@ -42,10 +48,25 @@
         ];
 
         var cards = [];
+        var invert = false;
+
         try {
             var hash = window.location.hash.substring(1);
-            if(hash) cards = JSON.parse(decodeURIComponent(hash));
+            if(hash) {
+                var data = JSON.parse(decodeURIComponent(hash));
+                // Handle new data structure (object with invert + cards) vs old (just cards)
+                if (data.cards) {
+                    cards = data.cards;
+                    invert = data.invert || false;
+                } else {
+                    cards = data;
+                }
+            }
         } catch(e) {}
+
+        document.getElementById('invert-toggle').checked = invert;
+
+        function updateInvert(val) { invert = val; }
 
         function render() {
             var container = document.getElementById('cards-container');
@@ -53,15 +74,10 @@
             cards.forEach(function(card, idx) {
                 var el = document.createElement('div');
                 el.className = 'card';
-                
                 var opts = FORMATS.map(f => `<option value="${f.id}" ${card.format==f.id?'selected':''}>${f.name}</option>`).join('');
                 
-                // If it's a pre-rendered string (contains commas), show just the raw value part visually
                 var displayData = card.data;
                 if ((card.format == 4 || card.format == 5) && card.data.indexOf(',') > -1) {
-                     // It's encoded matrix data, maybe show a placeholder or the original if we had it.
-                     // For simplicity in this demo, we assume 'card.raw' holds user input if we add it, 
-                     // or we just clear 'data' if it looks like matrix data so user can re-enter.
                      if(card.data.length > 50) displayData = "(Encoded Matrix Data)";
                 }
 
@@ -74,42 +90,31 @@
                         </div>
                         <button class="remove" onclick="remove(${idx})">Remove</button>
                     </div>
-                    <input type="text" placeholder="Card Name (e.g. Flight BA123)" value="${card.name || ''}" onchange="update(${idx}, 'name', this.value)">
-                    <input type="text" placeholder="Description (e.g. Gate 12, Seat 4A)" value="${card.description || ''}" onchange="update(${idx}, 'description', this.value)">
+                    <input type="text" placeholder="Card Name" value="${card.name || ''}" onchange="update(${idx}, 'name', this.value)">
+                    <input type="text" placeholder="Description" value="${card.description || ''}" onchange="update(${idx}, 'description', this.value)">
                     <select onchange="update(${idx}, 'format', this.value)">${opts}</select>
                     <input type="text" placeholder="Data" value="${displayData}" onchange="update(${idx}, 'data', this.value)">
-                    <div class="hint">For Aztec/PDF417, data is encoded on Save.</div>
                 `;
                 container.appendChild(el);
             });
         }
 
-        function update(idx, field, val) { 
-            cards[idx][field] = val; 
-            // If format changed to/from Aztec/PDF417, we might need to reset data logic
-            // For now, simple update.
-        }
-        
+        function update(idx, field, val) { cards[idx][field] = val; }
         function move(idx, dir) {
             var target = idx + dir;
             if (target < 0 || target >= cards.length) return;
-            var temp = cards[idx];
-            cards[idx] = cards[target];
-            cards[target] = temp;
+            var temp = cards[idx]; cards[idx] = cards[target]; cards[target] = temp;
             render();
         }
-        
         function addCard() { cards.push({name:'', data:'', format:0}); render(); }
         function remove(idx) { cards.splice(idx, 1); render(); }
         
-        // --- Matrix Generation ---
         function generateMatrixData(text, formatId) {
             return new Promise((resolve, reject) => {
                 var canvas = document.getElementById('render-canvas');
                 var bwipId = FORMATS.find(f => f.id == formatId).bwip;
                 
                 try {
-                    // Optimized settings for small Pebble storage
                     var options = {
                         bcid: bwipId,
                         text: text,
@@ -119,41 +124,26 @@
                         paddingheight: 0,
                     };
 
-                    // Specific optimizations per format
-                    if (formatId == 3) { // QR
-                        // Default
-                    } else if (formatId == 4) { // Aztec
-                        options.azteclayers = 1; // Try to force smallest layer count
-                        options.format = 'compact'; 
-                    } else if (formatId == 5) { // PDF417
-                        options.columns = 2;
-                        options.eclevel = 1;
-                    } else { 
-                        // 1D Barcodes (Code128, EAN, etc)
-                        options.height = 10; // Force very short module height
-                    }
+                    if (formatId == 3) { } 
+                    else if (formatId == 4) { 
+                        // Aztec Optimization: Force COMPACT format and minimum layers
+                        options.format = 'compact';
+                        options.layers = 1;
+                    } 
+                    else if (formatId == 5) { options.columns = 2; options.eclevel = 1; }
+                    else { options.height = 10; }
 
                     try {
                         bwipjs.toCanvas(canvas, options);
                     } catch (optErr) {
-                        console.log("Optimized generation failed, falling back to default...");
-                        // Fallback: Remove all extra options and try again with just the basics
-                        bwipjs.toCanvas(canvas, {
-                            bcid: bwipId,
-                            text: text,
-                            scale: 1,
-                            includetext: false
-                        });
+                        bwipjs.toCanvas(canvas, { bcid: bwipId, text: text, scale: 1, includetext: false });
                     }
                     
-                    // Read pixels
                     var w = canvas.width;
                     var h = canvas.height;
                     var ctx = canvas.getContext('2d');
                     var imgData = ctx.getImageData(0, 0, w, h);
-                    var pixels = imgData.data; // RGBA
-                    
-                    // Convert to hex bitstream (row by row)
+                    var pixels = imgData.data;
                     var hex = "";
                     var val = 0;
                     var bitCount = 0;
@@ -161,18 +151,9 @@
                     for(var r=0; r<h; r++) {
                         for(var c=0; c<w; c++) {
                             var idx = (r*w + c) * 4;
-                            // Check alpha or darkness. BWIP renders black on transparent/white.
-                            // If Alpha > 128 AND Red < 128, it is black.
-                            var rVal = pixels[idx];
-                            var gVal = pixels[idx+1];
-                            var bVal = pixels[idx+2];
-                            var aVal = pixels[idx+3];
-                            
-                            var isBlack = (aVal > 128) && (rVal < 128); 
-                            
+                            var isBlack = (pixels[idx+3] > 128) && (pixels[idx] < 128); 
                             val = (val << 1) | (isBlack ? 1 : 0);
                             bitCount++;
-                            
                             if(bitCount == 4) {
                                 hex += val.toString(16).toUpperCase();
                                 val = 0;
@@ -180,41 +161,28 @@
                             }
                         }
                     }
-                    // Flush remaining bits
                     if(bitCount > 0) {
                         val = val << (4 - bitCount);
                         hex += val.toString(16).toUpperCase();
                     }
-                    
                     resolve(`${w},${h},${hex}`);
-                    
-                } catch (e) {
-                    console.error(e);
-                    reject(e);
-                }
+                } catch (e) { reject(e); }
             });
         }
 
         async function save() {
             var btn = document.querySelector('button[onclick="save()"]');
-            btn.innerText = "Processing...";
+            btn.innerText = "Syncing...";
             btn.disabled = true;
 
             var finalCards = [];
-            
             for(let c of cards) {
                 if(!c.name || !c.data) continue;
-                
                 let processedCard = { ...c };
-                
-                // If it's a matrix (QR/Aztec/PDF417) OR a 1D code, generate bitmap data
-                // We now treat ALL formats as bitmaps for consistency and quality
-                if (c.format >= 0) { // All formats
+                if (c.format >= 0) {
                     try {
-                        console.log(`Encoding ${c.name} (${c.format})...`);
                         processedCard.data = await generateMatrixData(c.data, c.format);
                     } catch(e) {
-                        console.error(e);
                         alert(`Error encoding ${c.name}: ${e}`);
                         btn.innerText = "Save & Sync";
                         btn.disabled = false;
@@ -224,8 +192,11 @@
                 finalCards.push(processedCard);
             }
 
-            var json = JSON.stringify(finalCards);
-            location.href = 'pebblejs://close#' + encodeURIComponent(json);
+            var result = {
+                invert: invert,
+                cards: finalCards
+            };
+            location.href = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(result));
         }
 
         render();

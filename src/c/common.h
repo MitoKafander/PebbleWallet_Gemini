@@ -32,9 +32,11 @@ typedef struct {
 extern WalletCardInfo g_card_infos[MAX_CARDS];
 extern int g_card_count;
 extern uint8_t g_active_bits[MAX_BITS_LEN]; 
+extern bool g_invert_colors; 
 
 // --- Modules ---
-void storage_load_infos(void);
+void storage_load_settings(void);
+void storage_save_settings(void);
 void storage_load_card_data(int index, uint8_t *buffer, int max_len);
 void storage_save_card(int index, WalletCardInfo *info, const uint8_t *bits, int bits_len);
 void storage_save_count(int count);

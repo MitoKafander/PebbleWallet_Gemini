@@ -4,6 +4,7 @@
 WalletCardInfo g_card_infos[MAX_CARDS];
 int g_card_count = 0;
 uint8_t g_active_bits[MAX_BITS_LEN]; 
+bool g_invert_colors = false;
 
 static Window *s_main_window;
 static MenuLayer *s_menu_layer;
@@ -16,6 +17,12 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     if (dict_find(iter, MESSAGE_KEY_CMD_SYNC_START)) {
         g_card_count = 0;
         storage_save_count(0);
+        
+        Tuple *t_inv = dict_find(iter, MESSAGE_KEY_KEY_INVERT);
+        if (t_inv) {
+            g_invert_colors = (t_inv->value->int32 == 1);
+            storage_save_settings();
+        }
         menu_layer_reload_data(s_menu_layer);
     }
 
@@ -121,7 +128,7 @@ static void main_window_unload(Window *window) {
 }
 
 static void init(void) {
-    storage_load_infos();
+    storage_load_settings();
     app_message_register_inbox_received(inbox_received_handler);
     app_message_open(2048, 256);
     s_main_window = window_create();

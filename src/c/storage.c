@@ -2,13 +2,20 @@
 #include <stddef.h> 
 
 // Keys:
-// BASE + 0: WalletCardInfo (Format, Name, Desc, W, H)
-// BASE + 1..11: Raw Data Chunks (100 bytes each)
+// PERSIST_KEY_COUNT: card count
+// PERSIST_KEY_BASE-1: Global Invert Setting
+// BASE + (i*12): Info
+// BASE + (i*12) + 1..11: Data
 
 #define KEYS_PER_CARD 12
 #define STORAGE_CHUNK_SIZE 100 
+#define KEY_SETTING_INVERT (PERSIST_KEY_BASE - 1)
 
-void storage_load_infos(void) {
+void storage_load_settings(void) {
+    // 1. Load Invert Setting
+    g_invert_colors = persist_exists(KEY_SETTING_INVERT) ? persist_read_bool(KEY_SETTING_INVERT) : false;
+
+    // 2. Load Card Infos
     if (!persist_exists(PERSIST_KEY_COUNT)) {
         g_card_count = 0;
         return;
@@ -19,6 +26,10 @@ void storage_load_infos(void) {
     for (int i = 0; i < g_card_count; i++) {
         persist_read_data(PERSIST_KEY_BASE + (i * KEYS_PER_CARD), &g_card_infos[i], sizeof(WalletCardInfo));
     }
+}
+
+void storage_save_settings(void) {
+    persist_write_bool(KEY_SETTING_INVERT, g_invert_colors);
 }
 
 void storage_load_card_data(int index, uint8_t *buffer, int max_len) {
@@ -38,7 +49,6 @@ void storage_load_card_data(int index, uint8_t *buffer, int max_len) {
 void storage_save_card(int index, WalletCardInfo *info, const uint8_t *bits, int bits_len) {
     if (index < 0 || index >= MAX_CARDS) return;
     int base_key = PERSIST_KEY_BASE + (index * KEYS_PER_CARD);
-
     persist_write_data(base_key, info, sizeof(WalletCardInfo));
 
     int offset = 0;
