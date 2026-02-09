@@ -6,35 +6,54 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int sw = bounds.size.w;
     int sh = bounds.size.h;
     
-    // Rotate if pattern is much wider than tall (1D codes)
+    // 1. Determine Rotation & Base Dimensions
     bool rotate = (w > h * 2);
-    
-    // Pattern runs along 'avail_w' axis. Bars extend along 'avail_h' axis.
-    int avail_w = rotate ? sh : sw;
-    int avail_h = rotate ? sw : sh;
+    int p_axis_max = rotate ? sh : sw;
+    int b_axis_max = rotate ? sw : sh;
 
-    // Force Quiet Zones (at the ends of the pattern)
-    avail_w -= 40; // 20px at each end
+    // 2. Force Large Quiet Zones for 1D scannability
+    // We want at least 30px gap at the start and end of the pattern
+    int quiet_zone = 30;
+    int avail_p = p_axis_max - (quiet_zone * 2);
+    int avail_b = b_axis_max - 10; // Slight side margin
 
-    int scale = avail_w / w;
+    // 3. Calculate Scaling
+    int scale = avail_p / w;
     if (scale < 1) scale = 1;
 
-    // Bar length (height of the bars)
-    int bar_len = rotate ? 124 : h * scale; 
-    if (!rotate && h < 20) bar_len = 100; // Stretch if it's a 1D code in portrait
+    // 4. Calculate Bar Length (Thickness of the barcode block)
+    int bar_len = rotate ? (sw - 20) : (h * scale);
+    if (!rotate && h < 20) bar_len = 100; // Portrait 1D stretching
 
-    // Centering offsets
-    int pattern_total_px = w * scale;
-    int offset_pattern = (avail_w - pattern_total_px) / 2 + 20;
-    int offset_bar = (avail_h - bar_len) / 2;
+    // 5. Centering
+    int pattern_px = w * scale;
+    int p_offset = (p_axis_max - pattern_px) / 2;
+    int b_offset = (b_axis_max - bar_len) / 2;
 
-    // Background
-    GColor bg = g_invert_colors ? GColorBlack : GColorWhite;
-    GColor fg = g_invert_colors ? GColorWhite : GColorBlack;
-    graphics_context_set_fill_color(ctx, bg);
+    // 6. Colors
+    GColor bg_color = g_invert_colors ? GColorBlack : GColorWhite;
+    GColor fg_color = g_invert_colors ? GColorWhite : GColorBlack;
+
+    // Clear background
+    graphics_context_set_fill_color(ctx, bg_color);
     graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-    graphics_context_set_fill_color(ctx, fg);
+    
+    // Draw a White Quiet Zone background for the barcode if in Invert mode
+    // (Most laser scanners CANNOT read white-on-black 1D barcodes)
+    if (g_invert_colors && (w > h * 2)) {
+        // For 1D barcodes, we force a white background plate for scannability
+        graphics_context_set_fill_color(ctx, GColorWhite);
+        if (rotate) {
+            graphics_fill_rect(ctx, GRect(b_offset - 4, p_offset - 10, bar_len + 8, pattern_px + 20), 0, GCornerNone);
+        } else {
+            graphics_fill_rect(ctx, GRect(p_offset - 10, b_offset - 4, pattern_px + 20, bar_len + 8), 0, GCornerNone);
+        }
+        graphics_context_set_fill_color(ctx, GColorBlack); // Use black bars on the white plate
+    } else {
+        graphics_context_set_fill_color(ctx, fg_color);
+    }
 
+    // 7. Drawing Loop
     for (int r = 0; r < h; r++) {
         int run_start = -1;
         for (int c = 0; c < w; c++) {
@@ -44,27 +63,19 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
                 if (run_start == -1) run_start = c;
             } else {
                 if (run_start != -1) {
-                    int run_w = (c - run_start) * scale;
-                    int p_pos = offset_pattern + run_start * scale;
-                    if (rotate) {
-                        // Pattern goes TOP to BOTTOM. Bars go LEFT to RIGHT.
-                        graphics_fill_rect(ctx, GRect(offset_bar, p_pos, bar_len, run_w), 0, GCornerNone);
-                    } else {
-                        // Pattern goes LEFT to RIGHT. Bars go TOP to BOTTOM.
-                        graphics_fill_rect(ctx, GRect(p_pos, offset_bar + r * scale, run_w, scale), 0, GCornerNone);
-                    }
+                    int run_w_px = (c - run_start) * scale;
+                    int p_pos = p_offset + run_start * scale;
+                    if (rotate) graphics_fill_rect(ctx, GRect(b_offset, p_pos, bar_len, run_w_px), 0, GCornerNone);
+                    else graphics_fill_rect(ctx, GRect(p_pos, b_offset + r * scale, run_w_px, scale), 0, GCornerNone);
                     run_start = -1;
                 }
             }
         }
         if (run_start != -1) {
-            int run_w = (w - run_start) * scale;
-            int p_pos = offset_pattern + run_start * scale;
-            if (rotate) {
-                graphics_fill_rect(ctx, GRect(offset_bar, p_pos, bar_len, run_w), 0, GCornerNone);
-            } else {
-                graphics_fill_rect(ctx, GRect(p_pos, offset_bar + r * scale, run_w, scale), 0, GCornerNone);
-            }
+            int run_w_px = (w - run_start) * scale;
+            int p_pos = p_offset + run_start * scale;
+            if (rotate) graphics_fill_rect(ctx, GRect(b_offset, p_pos, bar_len, run_w_px), 0, GCornerNone);
+            else graphics_fill_rect(ctx, GRect(p_pos, b_offset + r * scale, run_w_px, scale), 0, GCornerNone);
         }
     }
 }
