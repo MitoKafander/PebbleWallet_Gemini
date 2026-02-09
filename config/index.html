@@ -119,15 +119,26 @@
 
                     // Specific optimizations per format
                     if (formatId == 3) { // QR
-                        options.eclevel = 'L'; // Lowest error correction = smallest size
+                        // No forced EC level - let it auto-select to avoid 'length exceeded'
                     } else if (formatId == 4) { // Aztec
-                        options.format = 'compact'; // Smallest format for short strings (boarding passes)
+                        options.format = 'compact'; 
                     } else if (formatId == 5) { // PDF417
-                        options.columns = 2; // Narrower
-                        options.eclevel = 1; // Lowest EC
+                        options.columns = 2;
+                        options.eclevel = 1;
                     }
 
-                    bwipjs.toCanvas(canvas, options);
+                    try {
+                        bwipjs.toCanvas(canvas, options);
+                    } catch (optErr) {
+                        console.log("Optimized generation failed, falling back to default...");
+                        // Fallback: Remove all extra options and try again with just the basics
+                        bwipjs.toCanvas(canvas, {
+                            bcid: bwipId,
+                            text: text,
+                            scale: 1,
+                            includetext: false
+                        });
+                    }
                     
                     // Read pixels
                     var w = canvas.width;
