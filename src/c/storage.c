@@ -1,20 +1,15 @@
 #include "common.h"
 #include <stddef.h> 
 
-// Pebble Storage Optimization - "Ultra-Safe Mode"
-// Problem: Large chunks (250b) are failing to persist reliably on some firmware.
-// Solution: Use small 100-byte chunks.
-// Storage limit: 4KB total. 
-// 10 cards * 400 bytes = 4KB. We are tight but should fit.
-
+// Split Architecture:
 // Keys:
-// BASE + 0: Header
-// BASE + 1..7: Data Chunks (100 bytes each)
+// BASE + 0: WalletCardInfo (Header)
+// BASE + 1..7: Compressed Data Chunks
 
 #define KEYS_PER_CARD 8
-#define STORAGE_CHUNK_SIZE 100 // Extremely safe size
+#define STORAGE_CHUNK_SIZE 100 
 
-// --- Compression Helpers (Identical to before) ---
+// --- Compression Helpers (Same as before) ---
 static int compress_data(const char *input, uint8_t *output, int max_out_len) {
     const char *p = input;
     uint8_t *out_ptr = output;
@@ -87,24 +82,16 @@ static void decompress_data(const uint8_t *input, int in_len, char *output, int 
 #define LEGACY_KEY_COUNT 100
 #define LEGACY_KEY_BASE 1000
 
-// We also need to wipe the "medium chunk" keys (24200 range) from previous version
-// Since we are changing KEYS_PER_CARD, the layout changes again.
-// To be safe, we will just rely on overwriting or user clearing.
-// But let's add a robust wipe for the old base.
-
 void storage_wipe_legacy(void) {
     if (persist_exists(LEGACY_KEY_COUNT)) {
         persist_delete(LEGACY_KEY_COUNT);
-        for (int i = 0; i < 50; i++) { // Increase range
+        for (int i = 0; i < 50; i++) { 
             if (persist_exists(LEGACY_KEY_BASE + i)) persist_delete(LEGACY_KEY_BASE + i);
         }
     }
-    // Also try to wipe the previous attempt's keys (24200+)
-    // This is aggressive but necessary to clean up fragmentation.
-    // We only do this if we detect we are in a "fresh" state (card count 0 or error)
 }
 
-void storage_load_cards(void) {
+void storage_load_infos(void) {
     storage_wipe_legacy();
 
     if (!persist_exists(PERSIST_KEY_COUNT)) {
@@ -115,45 +102,47 @@ void storage_load_cards(void) {
     g_card_count = persist_read_int(PERSIST_KEY_COUNT);
     if (g_card_count > MAX_CARDS) g_card_count = MAX_CARDS;
 
-    uint8_t comp_buf[600]; // Slightly larger buffer
-
     for (int i = 0; i < g_card_count; i++) {
         int base_key = PERSIST_KEY_BASE + (i * KEYS_PER_CARD);
-        
-        // 1. Load Header
-        size_t header_size = offsetof(WalletCard, data);
-        persist_read_data(base_key, &g_cards[i], header_size);
-        
-        // 2. Load Compressed Data (up to 7 chunks)
-        int total_comp_len = 0;
-        
-        for (int k=1; k < KEYS_PER_CARD; k++) {
-             int chunk_key = base_key + k;
-             if (persist_exists(chunk_key)) {
-                 int read = persist_read_data(chunk_key, comp_buf + total_comp_len, STORAGE_CHUNK_SIZE);
-                 total_comp_len += read;
-             } else {
-                 break; // No more chunks
-             }
-        }
-        
-        // 3. Decompress
-        decompress_data(comp_buf, total_comp_len, g_cards[i].data, MAX_DATA_LEN);
+        // Only load the info struct (small)
+        persist_read_data(base_key, &g_card_infos[i], sizeof(WalletCardInfo));
     }
-    APP_LOG(APP_LOG_LEVEL_INFO, "Loaded %d cards (Safe Chunked)", g_card_count);
+    APP_LOG(APP_LOG_LEVEL_INFO, "Loaded %d card headers", g_card_count);
 }
 
-void storage_save_card(int index, WalletCard *card) {
+void storage_load_card_data(int index, char *buffer, int max_len) {
+    if (!buffer || index < 0 || index >= g_card_count) return;
+    int base_key = PERSIST_KEY_BASE + (index * KEYS_PER_CARD);
+
+    // Buffer for compressed data chunks
+    uint8_t comp_buf[1024]; // Enough for 7 * 100 chunks + extra
+    int total_comp_len = 0;
+
+    for (int k=1; k < KEYS_PER_CARD; k++) {
+         int chunk_key = base_key + k;
+         if (persist_exists(chunk_key)) {
+             int read = persist_read_data(chunk_key, comp_buf + total_comp_len, STORAGE_CHUNK_SIZE);
+             total_comp_len += read;
+         } else {
+             break;
+         }
+    }
+    
+    // Decompress into the target buffer (g_active_card_data)
+    decompress_data(comp_buf, total_comp_len, buffer, max_len);
+    APP_LOG(APP_LOG_LEVEL_INFO, "Loaded data for card %d (%d bytes)", index, strlen(buffer));
+}
+
+void storage_save_card(int index, WalletCardInfo *info, const char *data) {
     if (index < 0 || index >= MAX_CARDS) return;
     int base_key = PERSIST_KEY_BASE + (index * KEYS_PER_CARD);
 
     // 1. Save Header
-    size_t header_size = offsetof(WalletCard, data);
-    persist_write_data(base_key, card, header_size);
+    persist_write_data(base_key, info, sizeof(WalletCardInfo));
 
     // 2. Compress Data
-    uint8_t comp_buf[600];
-    int comp_len = compress_data(card->data, comp_buf, sizeof(comp_buf));
+    uint8_t comp_buf[1024];
+    int comp_len = compress_data(data, comp_buf, sizeof(comp_buf));
 
     // 3. Save Chunks
     int offset = 0;
@@ -164,10 +153,7 @@ void storage_save_card(int index, WalletCard *card) {
             int remaining = comp_len - offset;
             int write_len = (remaining > STORAGE_CHUNK_SIZE) ? STORAGE_CHUNK_SIZE : remaining;
             
-            int result = persist_write_data(chunk_key, comp_buf + offset, write_len);
-            if (result < 0) {
-                APP_LOG(APP_LOG_LEVEL_ERROR, "Write failed at chunk %d", k);
-            }
+            persist_write_data(chunk_key, comp_buf + offset, write_len);
             offset += write_len;
         } else {
             // Delete unused chunks
