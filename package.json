@@ -1,7 +1,7 @@
 {
   "name": "GeminiWallet",
   "author": "Gemini & MitoKafander",
-  "version": "1.2.1",
+  "version": "1.2.0",
   "keywords": ["pebble-app", "wallet", "barcode", "offline", "aztec"],
   "private": true,
   "dependencies": {},
