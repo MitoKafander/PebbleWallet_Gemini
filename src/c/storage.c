@@ -6,7 +6,26 @@
 #define CHUNK_SIZE 240 
 #define KEYS_PER_CARD 5 // 1 for header, 4 for data chunks
 
+// Old keys to wipe
+#define LEGACY_KEY_COUNT 100
+#define LEGACY_KEY_BASE 1000
+
+void storage_wipe_legacy(void) {
+    if (persist_exists(LEGACY_KEY_COUNT)) {
+        APP_LOG(APP_LOG_LEVEL_INFO, "Migrating: Wiping legacy storage...");
+        persist_delete(LEGACY_KEY_COUNT);
+        for (int i = 0; i < 15; i++) { // Wipe a few more than MAX_CARDS just in case
+            if (persist_exists(LEGACY_KEY_BASE + i)) {
+                persist_delete(LEGACY_KEY_BASE + i);
+            }
+        }
+    }
+}
+
 void storage_load_cards(void) {
+    // 1. Run Cleanup First
+    storage_wipe_legacy();
+
     if (!persist_exists(PERSIST_KEY_COUNT)) {
         g_card_count = 0;
         return;
