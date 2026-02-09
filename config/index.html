@@ -203,16 +203,14 @@
                 
                 let processedCard = { ...c };
                 
-                // If QR(3), Aztec(4) or PDF417(5), generate matrix data
-                if(c.format == 3 || c.format == 4 || c.format == 5) {
+                // If it's a matrix (QR/Aztec/PDF417) OR a 1D code, generate bitmap data
+                // We now treat ALL formats as bitmaps for consistency and quality
+                if (c.format >= 0) { // All formats
                     try {
-                        // Check if data is NOT already encoded (doesn't start with number,number,)
-                        // Simple check: if user typed "M1DOE...", encode it.
-                        if(!c.data.match(/^\d+,\d+,[0-9A-F]+$/)) {
-                            console.log(`Encoding ${c.name} (${c.format})...`);
-                            processedCard.data = await generateMatrixData(c.data, c.format);
-                        }
+                        console.log(`Encoding ${c.name} (${c.format})...`);
+                        processedCard.data = await generateMatrixData(c.data, c.format);
                     } catch(e) {
+                        console.error(e);
                         alert(`Error encoding ${c.name}: ${e}`);
                         btn.innerText = "Save & Sync";
                         btn.disabled = false;
