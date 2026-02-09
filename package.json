@@ -27,7 +27,19 @@
     ],
     "capabilities": ["configurable"],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "png",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "png",
+          "name": "IMAGE_APP_ICON",
+          "file": "images/app_icon.png"
+        }
+      ]
     }
   }
 }
