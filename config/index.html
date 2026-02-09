@@ -3,7 +3,6 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Gemini Wallet Config</title>
-    <!-- Import bwip-js for barcode generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bwip-js/3.4.3/bwip-js-min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; background: #f2f2f7; color: #1c1c1e; }
@@ -17,17 +16,15 @@
         .btn-tiny:disabled { opacity: 0.3; }
         .order-btns { display: flex; align-items: center; }
         .preview-canvas { display: none; }
-        .hint { font-size: 12px; color: #8e8e93; margin-top: -5px; margin-bottom: 10px; }
         .settings-row { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
         label { font-weight: 600; }
-        .toggle { transform: scale(1.2); }
     </style>
 </head>
 <body>
     <h2>App Settings</h2>
     <div class="settings-row">
         <label>Invert Colors (High Contrast)</label>
-        <input type="checkbox" id="invert-toggle" class="toggle" onchange="updateInvert(this.checked)">
+        <input type="checkbox" id="invert-toggle" style="transform: scale(1.2)" onchange="updateInvert(this.checked)">
     </div>
 
     <h2>My Wallet</h2>
@@ -50,22 +47,17 @@
         var cards = [];
         var invert = false;
 
+        // Load Initial State
         try {
             var hash = window.location.hash.substring(1);
             if(hash) {
                 var data = JSON.parse(decodeURIComponent(hash));
-                // Handle new data structure (object with invert + cards) vs old (just cards)
-                if (data.cards) {
-                    cards = data.cards;
-                    invert = data.invert || false;
-                } else {
-                    cards = data;
-                }
+                cards = data.cards || [];
+                invert = data.invert || false;
             }
         } catch(e) {}
 
         document.getElementById('invert-toggle').checked = invert;
-
         function updateInvert(val) { invert = val; }
 
         function render() {
@@ -76,10 +68,10 @@
                 el.className = 'card';
                 var opts = FORMATS.map(f => `<option value="${f.id}" ${card.format==f.id?'selected':''}>${f.name}</option>`).join('');
                 
-                var displayData = card.data;
-                if ((card.format == 4 || card.format == 5) && card.data.indexOf(',') > -1) {
-                     if(card.data.length > 50) displayData = "(Encoded Matrix Data)";
-                }
+                // CRITICAL FIX: Always show card.text (raw input) in the UI
+                // Never show the encoded card.data
+                var displayVal = card.text || card.data || "";
+                if (displayVal.indexOf(',') > -1 && displayVal.length > 30) displayVal = ""; 
 
                 el.innerHTML = `
                     <div class="card-header">
@@ -93,78 +85,49 @@
                     <input type="text" placeholder="Card Name" value="${card.name || ''}" onchange="update(${idx}, 'name', this.value)">
                     <input type="text" placeholder="Description" value="${card.description || ''}" onchange="update(${idx}, 'description', this.value)">
                     <select onchange="update(${idx}, 'format', this.value)">${opts}</select>
-                    <input type="text" placeholder="Data" value="${displayData}" onchange="update(${idx}, 'data', this.value)">
+                    <input type="text" placeholder="Data (Number or Text)" value="${displayVal}" onchange="update(${idx}, 'text', this.value)">
                 `;
                 container.appendChild(el);
             });
         }
 
-        function update(idx, field, val) { cards[idx][field] = val; }
+        function update(idx, field, val) { 
+            cards[idx][field] = val; 
+            if(field === 'text') cards[idx].data = ""; // Clear old matrix if text changes
+        }
         function move(idx, dir) {
             var target = idx + dir;
             if (target < 0 || target >= cards.length) return;
             var temp = cards[idx]; cards[idx] = cards[target]; cards[target] = temp;
             render();
         }
-        function addCard() { cards.push({name:'', data:'', format:0}); render(); }
+        function addCard() { cards.push({name:'', text:'', format:0}); render(); }
         function remove(idx) { cards.splice(idx, 1); render(); }
         
         function generateMatrixData(text, formatId) {
             return new Promise((resolve, reject) => {
                 var canvas = document.getElementById('render-canvas');
                 var bwipId = FORMATS.find(f => f.id == formatId).bwip;
-                
                 try {
-                    var options = {
-                        bcid: bwipId,
-                        text: text,
-                        scale: 1,
-                        includetext: false,
-                        paddingwidth: 0,
-                        paddingheight: 0,
-                    };
-
-                    if (formatId == 3) { } 
-                    else if (formatId == 4) { 
-                        // Aztec Optimization: Force COMPACT format and minimum layers
-                        options.format = 'compact';
-                        options.layers = 1;
-                    } 
+                    var options = { bcid: bwipId, text: text, scale: 1, includetext: false, paddingwidth: 0, paddingheight: 0 };
+                    if (formatId == 4) { options.format = 'compact'; options.layers = 1; } 
                     else if (formatId == 5) { options.columns = 2; options.eclevel = 1; }
-                    else { options.height = 10; }
+                    else if (formatId < 3) { options.height = 10; }
 
-                    try {
-                        bwipjs.toCanvas(canvas, options);
-                    } catch (optErr) {
-                        bwipjs.toCanvas(canvas, { bcid: bwipId, text: text, scale: 1, includetext: false });
-                    }
+                    bwipjs.toCanvas(canvas, options);
                     
-                    var w = canvas.width;
-                    var h = canvas.height;
-                    var ctx = canvas.getContext('2d');
-                    var imgData = ctx.getImageData(0, 0, w, h);
-                    var pixels = imgData.data;
-                    var hex = "";
-                    var val = 0;
-                    var bitCount = 0;
-                    
+                    var w = canvas.width, h = canvas.height;
+                    var pixels = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+                    var hex = "", val = 0, bitCount = 0;
                     for(var r=0; r<h; r++) {
                         for(var c=0; c<w; c++) {
                             var idx = (r*w + c) * 4;
                             var isBlack = (pixels[idx+3] > 128) && (pixels[idx] < 128); 
                             val = (val << 1) | (isBlack ? 1 : 0);
-                            bitCount++;
-                            if(bitCount == 4) {
-                                hex += val.toString(16).toUpperCase();
-                                val = 0;
-                                bitCount = 0;
-                            }
+                            if(++bitCount == 4) { hex += val.toString(16).toUpperCase(); val = 0; bitCount = 0; }
                         }
                     }
-                    if(bitCount > 0) {
-                        val = val << (4 - bitCount);
-                        hex += val.toString(16).toUpperCase();
-                    }
+                    if(bitCount > 0) { val = val << (4 - bitCount); hex += val.toString(16).toUpperCase(); }
                     resolve(`${w},${h},${hex}`);
                 } catch (e) { reject(e); }
             });
@@ -172,33 +135,23 @@
 
         async function save() {
             var btn = document.querySelector('button[onclick="save()"]');
-            btn.innerText = "Syncing...";
-            btn.disabled = true;
+            btn.innerText = "Syncing..."; btn.disabled = true;
 
-            var finalCards = [];
             for(let c of cards) {
-                if(!c.name || !c.data) continue;
-                let processedCard = { ...c };
-                if (c.format >= 0) {
+                var input = c.text || c.data;
+                if(!c.name || !input) continue;
+                // If input doesn't look like matrix data, encode it
+                if(input.indexOf(',') === -1) {
                     try {
-                        processedCard.data = await generateMatrixData(c.data, c.format);
+                        c.text = input; // Keep the original
+                        c.data = await generateMatrixData(input, c.format);
                     } catch(e) {
-                        alert(`Error encoding ${c.name}: ${e}`);
-                        btn.innerText = "Save & Sync";
-                        btn.disabled = false;
-                        return;
+                        alert(`Error: ${e}`); btn.innerText = "Save & Sync"; btn.disabled = false; return;
                     }
                 }
-                finalCards.push(processedCard);
             }
-
-            var result = {
-                invert: invert,
-                cards: finalCards
-            };
-            location.href = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(result));
+            location.href = 'pebblejs://close#' + encodeURIComponent(JSON.stringify({invert: invert, cards: cards}));
         }
-
         render();
     </script>
 </body>
