@@ -114,8 +114,13 @@ void storage_load_card_data(int index, char *buffer, int max_len) {
     if (!buffer || index < 0 || index >= g_card_count) return;
     int base_key = PERSIST_KEY_BASE + (index * KEYS_PER_CARD);
 
-    // Buffer for compressed data chunks
-    uint8_t comp_buf[1200]; // Enough for 11 * 100 chunks + extra
+    // Buffer for compressed data chunks (Heap allocated to save stack)
+    uint8_t *comp_buf = malloc(1200); 
+    if (!comp_buf) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "OOM in load_card_data");
+        return;
+    }
+    
     int total_comp_len = 0;
 
     for (int k=1; k < KEYS_PER_CARD; k++) {
@@ -130,6 +135,7 @@ void storage_load_card_data(int index, char *buffer, int max_len) {
     
     // Decompress into the target buffer (g_active_card_data)
     decompress_data(comp_buf, total_comp_len, buffer, max_len);
+    free(comp_buf); // Clean up
     APP_LOG(APP_LOG_LEVEL_INFO, "Loaded data for card %d (%d bytes)", index, strlen(buffer));
 }
 
@@ -141,8 +147,13 @@ void storage_save_card(int index, WalletCardInfo *info, const char *data) {
     persist_write_data(base_key, info, sizeof(WalletCardInfo));
 
     // 2. Compress Data
-    uint8_t comp_buf[1024];
-    int comp_len = compress_data(data, comp_buf, sizeof(comp_buf));
+    uint8_t *comp_buf = malloc(1200);
+    if (!comp_buf) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "OOM in save_card");
+        return;
+    }
+    
+    int comp_len = compress_data(data, comp_buf, 1200);
 
     // 3. Save Chunks
     int offset = 0;
@@ -160,6 +171,7 @@ void storage_save_card(int index, WalletCardInfo *info, const char *data) {
             if (persist_exists(chunk_key)) persist_delete(chunk_key);
         }
     }
+    free(comp_buf);
 }
 
 void storage_save_count(int count) {
