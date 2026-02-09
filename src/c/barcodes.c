@@ -4,8 +4,8 @@
 static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t width, uint16_t height, const uint8_t *bits) {
     if (width == 0 || height == 0 || !bits) return;
 
-    int avail_w = bounds.size.w - 10;
-    int avail_h = bounds.size.h - 10;
+    int avail_w = bounds.size.w - 4;
+    int avail_h = bounds.size.h - 4;
     int scale_w = avail_w / width;
     int scale_h = avail_h / height;
     int scale = (scale_w < scale_h) ? scale_w : scale_h;
