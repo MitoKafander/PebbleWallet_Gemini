@@ -109,12 +109,25 @@
                 var bwipId = FORMATS.find(f => f.id == formatId).bwip;
                 
                 try {
-                    bwipjs.toCanvas(canvas, {
-                        bcid: bwipId,       // Barcode type
-                        text: text,         // Text to encode
-                        scale: 1,           // 1x scale (1 pixel per module)
-                        includetext: false, 
-                    });
+                    // Optimized settings for small Pebble storage
+                    var options = {
+                        bcid: bwipId,
+                        text: text,
+                        scale: 1,
+                        includetext: false,
+                    };
+
+                    // Specific optimizations per format
+                    if (formatId == 3) { // QR
+                        options.eclevel = 'L'; // Lowest error correction = smallest size
+                    } else if (formatId == 4) { // Aztec
+                        options.layers = 0; // Smallest possible
+                    } else if (formatId == 5) { // PDF417
+                        options.columns = 2; // Narrower
+                        options.eclevel = 1; // Lowest EC
+                    }
+
+                    bwipjs.toCanvas(canvas, options);
                     
                     // Read pixels
                     var w = canvas.width;

@@ -2,11 +2,7 @@
 # Copy this whole block and paste it into the Rebble Cloud terminal.
 
 cd /workspaces/codespaces-pebble/GeminiWallet && 
-rm -rf .git && 
-git init && 
-git remote add origin https://github.com/MitoKafander/PebbleWallet_Gemini.git && 
 git fetch origin && 
 git reset --hard origin/main && 
-rm -rf resources && 
 pebble clean && 
 pebble build

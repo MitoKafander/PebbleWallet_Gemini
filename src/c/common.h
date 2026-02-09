@@ -5,8 +5,8 @@
 #define MAX_CARDS 10
 #define MAX_NAME_LEN 32
 #define MAX_DATA_LEN 1024 // Optimized for Aplite RAM (10KB total list size)
-#define PERSIST_KEY_COUNT 100
-#define PERSIST_KEY_BASE 1000
+#define PERSIST_KEY_COUNT 500
+#define PERSIST_KEY_BASE 24200
 
 // --- Types ---
 typedef enum {
