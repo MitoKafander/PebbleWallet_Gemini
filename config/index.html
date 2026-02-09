@@ -68,8 +68,6 @@
                 el.className = 'card';
                 var opts = FORMATS.map(f => `<option value="${f.id}" ${card.format==f.id?'selected':''}>${f.name}</option>`).join('');
                 
-                // CRITICAL FIX: Always show card.text (raw input) in the UI
-                // Never show the encoded card.data
                 var displayVal = card.text || card.data || "";
                 if (displayVal.indexOf(',') > -1 && displayVal.length > 30) displayVal = ""; 
 
@@ -93,7 +91,7 @@
 
         function update(idx, field, val) { 
             cards[idx][field] = val; 
-            if(field === 'text') cards[idx].data = ""; // Clear old matrix if text changes
+            if(field === 'text') cards[idx].data = ""; 
         }
         function move(idx, dir) {
             var target = idx + dir;
@@ -109,8 +107,13 @@
                 var canvas = document.getElementById('render-canvas');
                 var bwipId = FORMATS.find(f => f.id == formatId).bwip;
                 try {
+                    // Base options
                     var options = { bcid: bwipId, text: text, scale: 1, includetext: false, paddingwidth: 0, paddingheight: 0 };
-                    if (formatId == 4) { options.format = 'compact'; options.layers = 1; } 
+                    
+                    if (formatId == 4) { // Aztec
+                        // Default to auto-layers. Removed force compact/layers=1 to prevent 'maximum length' errors
+                        // bwip-js defaults to 'compact' if possible, then 'full'
+                    } 
                     else if (formatId == 5) { options.columns = 2; options.eclevel = 1; }
                     else if (formatId < 3) { options.height = 10; }
 
@@ -140,13 +143,12 @@
             for(let c of cards) {
                 var input = c.text || c.data;
                 if(!c.name || !input) continue;
-                // If input doesn't look like matrix data, encode it
                 if(input.indexOf(',') === -1) {
                     try {
-                        c.text = input; // Keep the original
+                        c.text = input; 
                         c.data = await generateMatrixData(input, c.format);
                     } catch(e) {
-                        alert(`Error: ${e}`); btn.innerText = "Save & Sync"; btn.disabled = false; return;
+                        alert(`Error encoding ${c.name}: ${e}`); btn.innerText = "Save & Sync"; btn.disabled = false; return;
                     }
                 }
             }
