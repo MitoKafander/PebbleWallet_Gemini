@@ -121,7 +121,7 @@
                     if (formatId == 3) { // QR
                         options.eclevel = 'L'; // Lowest error correction = smallest size
                     } else if (formatId == 4) { // Aztec
-                        options.layers = 0; // Smallest possible
+                        options.format = 'compact'; // Smallest format for short strings (boarding passes)
                     } else if (formatId == 5) { // PDF417
                         options.columns = 2; // Narrower
                         options.eclevel = 1; // Lowest EC
