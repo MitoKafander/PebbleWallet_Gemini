@@ -8,10 +8,18 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int screen_w = bounds.size.w;
     int screen_h = bounds.size.h;
 
+    // Determine available space
     int avail_w = rotate ? screen_h : screen_w;
     int avail_h = rotate ? screen_w : screen_h;
-    // Zero margins to allow max integer scaling
-    // avail_w -= 2; avail_h -= 2;
+
+    // SCALING LOGIC
+    // For 1D Barcodes (where height is very small compared to width)
+    if (w > h * 2) {
+        avail_w -= 20; // 10px quiet zone on each side (now top/bottom due to rotation)
+        avail_h -= 10; // some side breathing room
+    } else {
+        // Zero margins for 2D (Aztec/QR) to maximize size
+    }
 
     int scale_w = avail_w / w;
     int scale_h = avail_h / h;
