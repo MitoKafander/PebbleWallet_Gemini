@@ -23,7 +23,9 @@
       "KEY_NAME",
       "KEY_DESCRIPTION",
       "KEY_DATA",
-      "KEY_FORMAT"
+      "KEY_FORMAT",
+      "KEY_WIDTH",
+      "KEY_HEIGHT"
     ],
     "capabilities": ["configurable"],
     "resources": {

@@ -1,51 +1,21 @@
-// PebbleWallet Gemini - Optimized Phone Logic
-// Offline-first architecture
-
-// Note: Ensure this URL points to the location of your NEW config/index.html
-// If testing locally/Codespaces, update this URL.
+// PebbleWallet Gemini - Skunk-Style Binary Sync
 var CONFIG_URL = "https://mitokafander.github.io/PebbleWallet_Gemini/config/index.html";
 
-Pebble.addEventListener('ready', function() {
-    console.log('Gemini Wallet JS Ready');
-});
-
 Pebble.addEventListener('showConfiguration', function() {
-    var cards = [];
-    try {
-        cards = JSON.parse(localStorage.getItem('cards') || '[]');
-    } catch(e) {}
-    
-    // Pass cards in URL hash
-    var url = CONFIG_URL + '#' + encodeURIComponent(JSON.stringify(cards));
-    console.log('Opening config: ' + url);
-    Pebble.openURL(url);
+    var cards = JSON.parse(localStorage.getItem('cards') || '[]');
+    Pebble.openURL(CONFIG_URL + '#' + encodeURIComponent(JSON.stringify(cards)));
 });
 
 Pebble.addEventListener('webviewclosed', function(e) {
     if (!e.response || e.response === 'CANCELLED') return;
-    
-    var cards;
-    try {
-        cards = JSON.parse(decodeURIComponent(e.response));
-        localStorage.setItem('cards', JSON.stringify(cards));
-        syncToWatch(cards);
-    } catch(err) {
-        console.log('Config Parse Error: ' + err);
-    }
+    var cards = JSON.parse(decodeURIComponent(e.response));
+    localStorage.setItem('cards', JSON.stringify(cards));
+    syncToWatch(cards);
 });
 
 function syncToWatch(cards) {
-    // Offline-first sync strategy:
-    // 1. Send SYNC_START (clears watch DB in memory, prepares for overwrite)
-    // 2. Send each card
-    // 3. Send SYNC_COMPLETE
-    
-    var dictStart = { 'CMD_SYNC_START': 1 };
-    
-    Pebble.sendAppMessage(dictStart, function() {
+    Pebble.sendAppMessage({ 'CMD_SYNC_START': 1 }, function() {
         sendNextCard(cards, 0);
-    }, function(e) {
-        console.log('Sync Start Failed: ' + JSON.stringify(e));
     });
 }
 
@@ -60,17 +30,35 @@ function sendNextCard(cards, index) {
         'KEY_INDEX': index,
         'KEY_NAME': c.name,
         'KEY_DESCRIPTION': c.description || "",
-        // For Aztec/PDF417, c.data is now a long string "w,h,hex..."
-        'KEY_DATA': c.data, 
         'KEY_FORMAT': parseInt(c.format)
     };
-    
-    console.log('Sending Card ' + index + ' (' + c.name + ') len=' + c.data.length);
+
+    // If it's a matrix (QR/Aztec/PDF417), convert "w,h,hex" to binary
+    if (c.data.indexOf(',') > -1) {
+        var parts = c.data.split(',');
+        dict['KEY_WIDTH'] = parseInt(parts[0]);
+        dict['KEY_HEIGHT'] = parseInt(parts[1]);
+        
+        // Convert Hex String to Byte Array
+        var hex = parts[2];
+        var bytes = [];
+        for (var i = 0; i < hex.length; i += 2) {
+            bytes.push(parseInt(hex.substr(i, 2), 16));
+        }
+        dict['KEY_DATA'] = bytes; // Sending raw bytes!
+    } else {
+        // 1D Barcode (just text)
+        dict['KEY_WIDTH'] = 0;
+        dict['KEY_HEIGHT'] = 0;
+        // Convert text to bytes so KEY_DATA is always a byte array for consistency
+        var bytes = [];
+        for (var i = 0; i < c.data.length; i++) bytes.push(c.data.charCodeAt(i));
+        dict['KEY_DATA'] = bytes;
+    }
 
     Pebble.sendAppMessage(dict, function() {
         sendNextCard(cards, index + 1);
     }, function(e) {
-        console.log('Card ' + index + ' failed, retrying... Error: ' + JSON.stringify(e));
         setTimeout(function() { sendNextCard(cards, index); }, 1000);
     });
 }
