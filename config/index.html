@@ -121,12 +121,16 @@
 
                     // Specific optimizations per format
                     if (formatId == 3) { // QR
-                        // No forced EC level - let it auto-select to avoid 'length exceeded'
+                        // Default
                     } else if (formatId == 4) { // Aztec
+                        options.azteclayers = 1; // Try to force smallest layer count
                         options.format = 'compact'; 
                     } else if (formatId == 5) { // PDF417
                         options.columns = 2;
                         options.eclevel = 1;
+                    } else { 
+                        // 1D Barcodes (Code128, EAN, etc)
+                        options.height = 10; // Force very short module height
                     }
 
                     try {
