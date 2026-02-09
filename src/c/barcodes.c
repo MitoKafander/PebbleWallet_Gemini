@@ -1,24 +1,23 @@
 #include "common.h"
 
-// Helper: Draw matrix from raw bit-packed array
+// NEW: Clean, Simplified, Robust Renderer
 static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h, const uint8_t *bits) {
     if (w == 0 || h == 0 || !bits) return;
 
-    bool rotate = (w > h);
     int screen_w = bounds.size.w;
     int screen_h = bounds.size.h;
-
-    // Determine available space
+    
+    // DECIDE ROTATION
+    // If it's a wide 1D barcode (w >> h), always rotate to use the 168px vertical space
+    bool rotate = (w > h * 2);
+    
+    // DECIDE SCALING
     int avail_w = rotate ? screen_h : screen_w;
     int avail_h = rotate ? screen_w : screen_h;
-
-    // SCALING LOGIC
-    // For 1D Barcodes (where height is very small compared to width)
-    if (w > h * 2) {
-        avail_w -= 20; // 10px quiet zone on each side (now top/bottom due to rotation)
-        avail_h -= 10; // some side breathing room
-    } else {
-        // Zero margins for 2D (Aztec/QR) to maximize size
+    
+    // For scannability, we MUST leave room for quiet zones on 1D barcodes
+    if (rotate) {
+        avail_w -= 40; // 20px quiet zone on each end
     }
 
     int scale_w = avail_w / w;
@@ -26,18 +25,21 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int scale = (scale_w < scale_h) ? scale_w : scale_h;
     if (scale < 1) scale = 1;
 
-    int h_scale = scale;
-    if (w > h * 2) {
-        h_scale = avail_h / h;
-        if (h_scale < scale) h_scale = scale;
+    // For 1D codes, we stretch the bars to be nice and tall
+    int bar_len_px = scale * h;
+    if (rotate && h < 20) {
+        // Stretch 1D bars to fill roughly half the screen height (70px)
+        bar_len_px = 70;
     }
 
-    int pix_w = w * scale;
-    int pix_h = h * h_scale;
-    int ox = (avail_w - pix_w) / 2 + 1;
-    int oy = (avail_h - pix_h) / 2 + 1;
+    // CALCULATE OFFSETS (Centered)
+    int total_w = w * scale;
+    int total_h = bar_len_px;
+    
+    int ox = (avail_w - total_w) / 2 + (rotate ? 20 : 0);
+    int oy = (avail_h - total_h) / 2;
 
-    // Use current invert setting
+    // DRAW
     GColor bg_color = g_invert_colors ? GColorBlack : GColorWhite;
     GColor fg_color = g_invert_colors ? GColorWhite : GColorBlack;
 
@@ -56,29 +58,25 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
             } else {
                 if (run_start != -1) {
                     int run_len = c - run_start;
-                    if (rotate) graphics_fill_rect(ctx, GRect(oy + r*h_scale, screen_h - (ox + c*scale), h_scale, run_len*scale), 0, GCornerNone);
-                    else graphics_fill_rect(ctx, GRect(ox + run_start*scale, oy + r*h_scale, run_len*scale, h_scale), 0, GCornerNone);
+                    if (rotate) {
+                        // Vertical Bars (X is vertical position, Y is bar thickness)
+                        graphics_fill_rect(ctx, GRect(oy, screen_h - (ox + c*scale), bar_len_px, run_len*scale), 0, GCornerNone);
+                    } else {
+                        // Standard View
+                        graphics_fill_rect(ctx, GRect(ox + run_start*scale, oy + r*scale, run_len*scale, scale), 0, GCornerNone);
+                    }
                     run_start = -1;
                 }
             }
         }
         if (run_start != -1) {
             int run_len = w - run_start;
-            if (rotate) graphics_fill_rect(ctx, GRect(oy + r*h_scale, screen_h - (ox + w*scale), h_scale, run_len*scale), 0, GCornerNone);
-            else graphics_fill_rect(ctx, GRect(ox + run_start*scale, oy + r*h_scale, run_len*scale, h_scale), 0, GCornerNone);
+            if (rotate) graphics_fill_rect(ctx, GRect(oy, screen_h - (ox + w*scale), bar_len_px, run_len*scale), 0, GCornerNone);
+            else graphics_fill_rect(ctx, GRect(ox + run_start*scale, oy + r*scale, run_len*scale, scale), 0, GCornerNone);
         }
     }
 }
 
 void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format, uint16_t w, uint16_t h, const uint8_t *bits) {
-    if (w > 0 && h > 0) {
-        draw_bits_matrix(ctx, bounds, w, h, bits);
-    } else {
-        GColor bg_color = g_invert_colors ? GColorBlack : GColorWhite;
-        GColor fg_color = g_invert_colors ? GColorWhite : GColorBlack;
-        graphics_context_set_fill_color(ctx, bg_color);
-        graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-        graphics_context_set_text_color(ctx, fg_color);
-        graphics_draw_text(ctx, (char*)bits, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21), bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
-    }
+    draw_bits_matrix(ctx, bounds, w, h, bits);
 }
