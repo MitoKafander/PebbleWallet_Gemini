@@ -10,7 +10,8 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
 
     int avail_w = rotate ? screen_h : screen_w;
     int avail_h = rotate ? screen_w : screen_h;
-    avail_w -= 2; avail_h -= 2;
+    // Zero margins to allow max integer scaling
+    // avail_w -= 2; avail_h -= 2;
 
     int scale_w = avail_w / w;
     int scale_h = avail_h / h;
