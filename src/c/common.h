@@ -19,10 +19,10 @@ typedef enum {
 } BarcodeFormat;
 
 typedef struct {
+    BarcodeFormat format;
     char name[MAX_NAME_LEN];
     char description[MAX_NAME_LEN]; // New: visible description in menu
     char data[MAX_DATA_LEN]; // Holds raw text OR "w,h,hex" for matrix
-    BarcodeFormat format;
 } WalletCard;
 
 // --- Global State ---

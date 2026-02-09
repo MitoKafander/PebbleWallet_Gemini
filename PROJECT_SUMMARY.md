@@ -1,7 +1,11 @@
-# GeminiWallet Project Summary (v1.2 Baseline)
-*Final Polished Build - Feb 8, 2026*
+# GeminiWallet Project Summary (v1.2.1 Hotfix)
+*Storage Optimization Fix - Feb 9, 2026*
 
-This version is the clean, secure, and fully functional baseline for GeminiWallet. It is 100% independent from the original PebbleWallet project.
+This version includes a critical fix for persistent storage corruption that caused barcodes to revert to raw text after app restarts.
+
+## Key Changes (v1.2.1)
+- **Struct Reordering**: Moved `BarcodeFormat` to the start of the data structure to prevent it from being lost if storage is truncated.
+- **Variable Length Storage**: Now only writes the actual length of data to Persistent Storage, significantly reducing memory usage (essential for Aplite's 4KB limit).
 
 ## Core Features
 - **Comprehensive Format Support**:
@@ -19,7 +23,7 @@ This version is the clean, secure, and fully functional baseline for GeminiWalle
 
 ## Technical Snapshot
 - **UUID**: `e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b`
-- **Version**: `1.0.0`
+- **Version**: `1.2.1`
 - **Memory**: Optimized for **Aplite** (2KB buffer, 1KB data segments).
 - **Structure**: Modular C (`main.c`, `storage.c`, `qr.c`, `barcodes.c`) and standard JS path (`src/js/pebble-js-app.js`).
 
