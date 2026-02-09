@@ -4,9 +4,9 @@
 // Split Architecture:
 // Keys:
 // BASE + 0: WalletCardInfo (Header)
-// BASE + 1..7: Compressed Data Chunks
+// BASE + 1..11: Compressed Data Chunks
 
-#define KEYS_PER_CARD 8
+#define KEYS_PER_CARD 12
 #define STORAGE_CHUNK_SIZE 100 
 
 // --- Compression Helpers (Same as before) ---
@@ -115,7 +115,7 @@ void storage_load_card_data(int index, char *buffer, int max_len) {
     int base_key = PERSIST_KEY_BASE + (index * KEYS_PER_CARD);
 
     // Buffer for compressed data chunks
-    uint8_t comp_buf[1024]; // Enough for 7 * 100 chunks + extra
+    uint8_t comp_buf[1200]; // Enough for 11 * 100 chunks + extra
     int total_comp_len = 0;
 
     for (int k=1; k < KEYS_PER_CARD; k++) {
