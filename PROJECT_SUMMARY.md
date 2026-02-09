@@ -1,31 +1,51 @@
-# GeminiWallet Project Summary (v1.3.0 Split Architecture)
-*Memory & Storage Optimization - Feb 9, 2026*
+# GeminiWallet Project Summary (v1.3.0)
+*Stable "Skunk Protocol" Build - Feb 9, 2026*
 
-This version includes a complete architectural refactor to support large/complex barcodes without crashing or data truncation.
+This version represents a complete rewrite of the data transport and storage layer. It is now highly stable, crash-resistant, and capable of handling massive boarding pass data.
 
-## Key Changes (v1.3.0)
-- **Split Architecture**: Separates lightweight metadata (Menu) from heavy barcode data (Details).
-- **On-Demand Loading**: Barcode data is fetched and decompressed only when viewing a card, saving ~20KB of RAM.
-- **Ultra-Safe Storage**: Uses small 100-byte chunks to bypass Pebble's 256-byte internal limit.
-- **Binary Compression**: Barcode matrices are compressed to 1-bit binary before saving, reducing storage usage by 50%.
+## 🏗️ Architecture: The "Split & Skunk" Model
+To overcome Pebble's RAM (24KB) and AppMessage (2KB) limits, we implemented two major patterns:
 
-## Core Features
-- **Comprehensive Format Support**: Aztec, QR (full charset), PDF417, and 1D codes.
-- **Offline First**: Full persistent storage on the watch.
-- **Smart Menu**: Dynamic subtitles and automatic fallback for complex data.
-- **Card Reordering**: Live reordering on the settings page.
+1.  **Split Architecture (RAM Fix):**
+    *   **Problem:** Storing 10 cards * 1KB data in RAM crashed the watch.
+    *   **Solution:** We now only keep lightweight `WalletCardInfo` (Name/Type) in RAM.
+    *   **On-Demand:** Heavy barcode data is fetched from persistent storage *only* when the user clicks a card, and is freed immediately after.
 
-## Technical Snapshot
-- **UUID**: `e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b`
-- **Version**: `1.3.0`
-- **Memory**: Optimized for **Aplite** (Metadata list < 1KB, dynamic data buffer 2.5KB).
-- **Structure**: Split-storage C modules (`main.c`, `storage.c`, `qr.c`, `barcodes.c`).
+2.  **Skunk Protocol (Binary Transfer):**
+    *   **Problem:** Sending Hex strings (e.g. "A1F0") wasted 50% of bandwidth and storage.
+    *   **Solution:** The phone now converts data to **Raw Binary** before sending.
+    *   **Result:** Double the capacity, faster transfers, and no "maximum length" errors.
 
----
+3.  **Ultra-Safe Storage (Persistence Fix):**
+    *   **Problem:** Pebble writes > 256 bytes often fail silently.
+    *   **Solution:** Data is sliced into **12 chunks of 100 bytes**.
+    *   **Safe Zone:** Keys are stored at index `24200+` to avoid collisions with other apps.
 
-## Maintenance & Recovery
-- **Revert to Baseline**: `git reset --hard v1.2`
-- **Emergency Sync**: Use `SYNC_COMMANDS.txt` if Rebble Cloud sidebar gets out of sync.
+## 🎨 UI & Rendering
+-   **Smart Rotation:** Wide codes (EAN-13, Code 128) automatically rotate 90° to use the screen's 168px vertical axis.
+-   **Quiet Zones:** 1D barcodes force a white background plate and (attempt to) enforce 20px margins for laser scanner compatibility.
+-   **Max Scaling:** Aztec and QR codes use "Zero Margin" logic to hit the highest possible integer scale factor (3x/4x).
+-   **Invert Colors:** Global setting for White-on-Black high contrast mode.
 
----
-**Next Session Goal:** Publish to the Rebble App Store & implement final UI toggles (Invert Colors).
+## 🐛 Current Known Issues (For Next Session)
+-   **1D Margins:** User reported Code 128/39 still touching screen edges despite the quiet zone logic. We may need to enforce a "hard clamp" or draw explicit white masking rectangles over the ends in the next session.
+-   **Aztec Size:** Some Aztec codes remain at ~12mm (3x scale) because 4x scale is just *slightly* too wide for the 144px screen. This is likely a physical limit, but we could explore "cropping" non-essential corners to force 4x.
+
+## 🛠️ Commands Reference
+**Sync to Web:**
+```bash
+cd /workspaces/codespaces-pebble/GeminiWallet && 
+git fetch origin && 
+git reset --hard origin/main && 
+pebble clean && 
+pebble build
+```
+
+**Install:**
+```bash
+pebble install --phone <IP_ADDRESS>
+# OR use 'python3 -m http.server 8080' and scan the QR
+```
+
+**Recovery:**
+If data looks weird, always: **Phone Settings -> Save & Sync**. This regenerates the binary data and clears old storage keys.
