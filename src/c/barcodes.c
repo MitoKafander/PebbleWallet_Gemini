@@ -1,6 +1,7 @@
 #include "common.h"
 #include <string.h>
 
+
 // ============================================================================
 // Code 128 Barcode Rendering (our original implementation)
 // Supports Code 128B (alphanumeric) and Code 128C (numeric pairs)
@@ -167,11 +168,11 @@ static void draw_code128_barcode(GContext *ctx, GRect bounds, const char *data) 
     bool is_numeric = is_all_digits(data);
     bool use_code_c = is_numeric;
 
+    char padded_data[MAX_DATA_LEN + 2] = {0}; // Initialized to silence 'unused variable' warning
     const char *barcode_data = data;
     int barcode_len = data_len;
 
     if (is_numeric && (data_len % 2 == 1)) {
-        char padded_data[MAX_DATA_LEN + 2]; // Declare only if needed to avoid unused variable warning
         padded_data[0] = '0';
         strncpy(padded_data + 1, data, MAX_DATA_LEN);
         padded_data[MAX_DATA_LEN + 1] = '\0';

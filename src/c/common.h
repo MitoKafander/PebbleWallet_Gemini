@@ -2,6 +2,7 @@
 #include <pebble.h>
 
 // --- Constants ---
+#define MAX_DATA_LEN 100 // Max length for barcode string data (e.g., for Code128 input)
 #define MAX_CARDS 10
 #define MAX_NAME_LEN 32
 // 1000 bytes of raw bits = 8000 pixels (enough for 88x88 matrix)
