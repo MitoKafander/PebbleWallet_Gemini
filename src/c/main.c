@@ -59,15 +59,6 @@ static void barcode_update_proc(Layer *layer, GContext *ctx) {
         WalletCardInfo *info = &g_card_infos[s_current_index];
         GRect bounds = layer_get_bounds(layer);
         barcode_draw(ctx, bounds, info->format, info->width, info->height, g_active_bits);
-
-        // FIX: Enforce Quiet Zones for 1D Barcodes
-        // 1D codes are wider than tall (before rotation). We draw white bars at the top/bottom
-        // of the screen (which are the start/end of the rotated barcode) to prevent scanning failures.
-        if (info->width > info->height) {
-            graphics_context_set_fill_color(ctx, GColorWhite);
-            graphics_fill_rect(ctx, GRect(0, 0, bounds.size.w, 10), 0, GCornerNone);
-            graphics_fill_rect(ctx, GRect(0, bounds.size.h - 10, bounds.size.w, 10), 0, GCornerNone);
-        }
     }
 }
 

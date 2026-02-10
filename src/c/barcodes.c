@@ -7,7 +7,7 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int sh = bounds.size.h; // 168
     
     // 1. Determine if we should rotate (only for 1D codes)
-    bool is_1d = (w > h * 2);
+    bool is_1d = (w > h);
     bool rotate = is_1d; 
 
     // 2. Setup Dimensions based on rotation
@@ -15,7 +15,7 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int b_axis_max = rotate ? sw : sh;
 
     // 3. Scaling & Margins
-    int margin = is_1d ? 20 : 0; // Only 1D needs quiet zones for scannability
+    int margin = is_1d ? 15 : 0; // Only 1D needs quiet zones for scannability
     int avail_p = p_axis_max - (margin * 2);
     int avail_b = b_axis_max;
 

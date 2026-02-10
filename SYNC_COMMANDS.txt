@@ -1,8 +1,7 @@
-# TO FIX THE WEB SYNC (REBBLE CLOUD):
+# STANDARD SYNC COMMANDS (REBBLE CLOUD):
 # Copy this whole block and paste it into the Rebble Cloud terminal.
 
 cd /workspaces/codespaces-pebble/GeminiWallet && 
-git fetch origin && 
-git reset --hard origin/main && 
+git pull origin main && 
 pebble clean && 
 pebble build
