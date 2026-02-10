@@ -14,6 +14,21 @@ static int s_current_index = 0;
 static bool s_loading = true;
 
 // --- AppMessage ---
+static void request_cards_from_phone(void *data) {
+    DictionaryIterator *iter;
+    if (app_message_outbox_begin(&iter) == APP_MSG_OK) {
+        dict_write_uint8(iter, MESSAGE_KEY_CMD_FETCH_CONFIG, 1);
+        app_message_outbox_send();
+    }
+}
+
+static void loading_timeout(void *data) {
+    if (s_loading) {
+        s_loading = false;
+        menu_layer_reload_data(s_menu_layer);
+    }
+}
+
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     if (dict_find(iter, MESSAGE_KEY_CMD_SYNC_START)) {
         g_card_count = 0;
@@ -129,13 +144,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
     } else {
         WalletCardInfo *c = &g_card_infos[cell_index->row];
         
-        // Draw card name
-        graphics_context_set_text_color(ctx, GColorBlack);
-        graphics_draw_text(ctx, c->name, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                           GRect(5, 2, bounds.size.w - 10, 28),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-
-        // Subtitle
+        // Use menu_cell_basic_draw to handle selection highlight (inverted text) automatically
         const char *subtitle;
         char fmt_subtitle[MAX_NAME_LEN];
         if (strlen(c->description) > 0) {
@@ -147,10 +156,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
             else snprintf(fmt_subtitle, sizeof(fmt_subtitle), "Barcode");
             subtitle = fmt_subtitle;
         }
-
-        graphics_draw_text(ctx, subtitle, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                           GRect(5, 28, bounds.size.w - 10, 18),
-                           GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+        menu_cell_basic_draw(ctx, cell_layer, c->name, subtitle, NULL);
     }
 }
 
@@ -184,6 +190,12 @@ static void init(void) {
     s_main_window = window_create();
     window_set_window_handlers(s_main_window, (WindowHandlers){ .load = main_window_load, .unload = main_window_unload });
     window_stack_push(s_main_window, true);
+
+    // Proactive request and timeout
+    app_timer_register(500, request_cards_from_phone, NULL);
+    if (g_card_count == 0) {
+        app_timer_register(3000, loading_timeout, NULL);
+    }
 }
 
 static void deinit(void) {

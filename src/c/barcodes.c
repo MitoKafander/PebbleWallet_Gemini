@@ -330,7 +330,7 @@ static void draw_2d_centered(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
 
     for (int r = 0; r < (int)h; r++) {
         for (int c = 0; c < (int)w; c++) {
-            int bit_idx = r * w + c; // Continuous packing
+            int bit_idx = r * w + c;
             bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
             if (is_black) {
                 graphics_fill_rect(ctx, GRect(x_offset + c * scale, y_offset + r * scale, scale, scale), 0, GCornerNone);
@@ -345,8 +345,8 @@ static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h,
     int screen_w = bounds.size.w;
     int screen_h = bounds.size.h;
 
-    // Quiet zone margin (10px each end)
-    int margin = 10; 
+    // Quiet zone margins (20px each end of bar pattern axis)
+    int margin = 20; 
     int available_h = screen_h - (margin * 2);
 
     // Integer scaling only to preserve critical bar ratios
@@ -356,17 +356,18 @@ static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h,
     int drawn_h = w * scale;
     int y_offset = margin + (available_h - drawn_h) / 2;
 
-    // Bar length (horizontal thickness on screen)
-    int bar_len = screen_w - 20;
+    // Bar length (horizontal thickness on screen) - Increased side margins for better scan
+    int bar_len = screen_w - 40; 
     int x_offset = (screen_w - bar_len) / 2;
 
-    // Sample middle row of bitmap (all rows identical for 1D)
-    int r = h / 2; 
+    // Sample row: use h/2 but ensure it's within bounds
+    int r = (h > 0) ? (h / 2) : 0;
+    if (r >= h && h > 0) r = h - 1;
 
-    // RLE: group consecutive black modules into single draw calls for efficiency and crispness
+    // RLE: group consecutive black modules into single draw calls
     int run_start = -1;
     for (int c = 0; c < (int)w; c++) {
-        int bit_idx = r * w + c; // Continuous packing
+        int bit_idx = r * w + c; 
         bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
 
         if (is_black) {
