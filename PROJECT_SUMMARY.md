@@ -20,12 +20,11 @@
 **Cause:** The barcode is too long (too many modules) to fit within the 128px safe area (168px screen - 40px margin) when forced to 1px/module scaling.
 
 ## Next Session Plan (Priorities)
-1.  **Fix Code 128 Margins:**
-    *   **Action:** Reduce the vertical margin in `draw_1d_rotated`.
-    *   *Calculation:* Code 128 quiet zone is 10x module width. At scale=1, that's 10px.
-    *   *Proposal:* Change `margin` from 20 to **10** (or even 8). This increases safe space from 128px to **148px**, allowing for ~2 more characters.
-    *   *Fallback:* If the code is *still* too long (>148px), we might need to implement a scrolling view or acknowledge the hardware limit.
-2.  **Verify Code 39:** Ensure the margin fix doesn't negatively impact Code 39 (which is currently "difficult but working").
+1.  **Fix Code 128/39 Scaling (Shrinking Logic):**
+    *   **Action:** Implement "Fit to Screen" logic for barcodes that are too long for integer scaling.
+    *   **Strategy:** If `scale < 1`, instead of forcing `scale = 1` (which spills off screen), use fractional downsampling to shrink the barcode until it fits within the margins.
+    *   *Reference:* EAN-13 (fixed length) works well because it always fits. Long Code 128/39 need to be scaled down to achieve that same look.
+2.  **Adjust Margins:** Reduce `margin` in `draw_1d_rotated` from 20 to **10** to reclaim vertical space.
 3.  **Final Polish:** Check if any other cosmetic tweaks are needed.
 
 ## Reference Commands

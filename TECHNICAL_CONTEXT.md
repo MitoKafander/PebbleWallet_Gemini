@@ -27,14 +27,13 @@ The C code (`src/c/barcodes.c`) handles rendering based on format:
 
 ### 3. The Code 128 "Too Big" Issue
 The current configuration fails for long Code 128 strings.
-*   **The Math:** Code 128 requires ~11 modules per character + 35 overhead modules.
-*   **The Constraint:** With a 20px margin, we only have **128 pixels** of vertical space.
-*   **The Failure Mode:**
-    *   If a code is > 128 modules wide (e.g., > 8-9 chars), `scale` calculation yields 0.
-    *   The code forces `scale = 1`.
-    *   The barcode is drawn at full length (>128px).
-    *   It spills into the 20px quiet zones, touching the top/bottom bezel.
-    *   **Scanner fails** because it cannot see the required "Quiet Zone" start/stop pattern.
+
+#### Comparative Analysis:
+*   **EAN-13:** Always 95 modules. At 1px/module, it uses **95px**. On a 168px screen, this leaves **73px** for margins (36px each side). Perfect scannability.
+*   **Code 128:** Variable length. A typical 16-digit card is ~211 modules. Even at 1px/module, it uses **211px**.
+*   **The Problem:** 211px is larger than the **168px** screen. 
+*   **Current Failure:** The code forces `scale = 1`, draws all 211px, and the ends are "chopped off" by the screen edges.
+*   **Solution Strategy:** Implement fractional downsampling (shrinking) for these cases so the 211 modules are squeezed into the available ~148px (168px - 20px margins).
 
 ## User Interface
 *   **Menu:** Uses `menu_cell_basic_draw` for native look-and-feel (correct selection inversion).
