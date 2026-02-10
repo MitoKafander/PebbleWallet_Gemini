@@ -346,7 +346,7 @@ static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h,
     int screen_w = bounds.size.w; // 144
     int screen_h = bounds.size.h; // 168
 
-    int margin = 10; 
+    int margin = 30; 
     int available_h = screen_h - (margin * 2);
 
     int scale = available_h / w;
@@ -430,7 +430,6 @@ void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format,
     switch (format) {
         case FORMAT_CODE128:
         case FORMAT_CODE39:
-        case FORMAT_EAN13:
             draw_code128_barcode(ctx, bounds, text_data);
             break;
 
@@ -439,7 +438,7 @@ void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format,
             break;
 
         default:
-            // Aztec/PDF417 without pre-rendering - can't render on watch
+            // EAN13, Aztec, PDF417 without pre-rendering - can't render on watch
             graphics_context_set_text_color(ctx, GColorBlack);
             graphics_draw_text(ctx, "Resync from phone",
                 fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), bounds,
