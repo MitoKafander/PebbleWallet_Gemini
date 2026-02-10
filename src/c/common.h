@@ -45,6 +45,9 @@ void storage_clear_all(void);
 // Barcode Renderer
 void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format, uint16_t w, uint16_t h, const uint8_t *bits);
 
+// QR Code Generator
+bool qr_generate_packed(const char *data, uint8_t *output_buffer, uint8_t *out_size);
+
 // UI
 void ui_push_main_menu(void);
 void ui_push_card_detail(int index);
