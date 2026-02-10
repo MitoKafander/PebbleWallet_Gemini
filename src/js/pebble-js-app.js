@@ -45,11 +45,17 @@ function sendNextCard(cards, index) {
 
     if (c.data.indexOf(',') > -1) {
         var parts = c.data.split(',');
-        dict['KEY_WIDTH'] = parseInt(parts[0]);
-        dict['KEY_HEIGHT'] = parseInt(parts[1]);
+        var rawW = parseInt(parts[0]);
+        var rawH = parseInt(parts[1]);
         var hex = parts[2];
+        
+        // OPTIMIZATION: Crop whitespace to allow larger scaling on watch
+        var optimized = cropBitmap(rawW, rawH, hex);
+        
+        dict['KEY_WIDTH'] = optimized.width;
+        dict['KEY_HEIGHT'] = optimized.height;
         var bytes = [];
-        for (var i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+        for (var i = 0; i < optimized.hex.length; i += 2) bytes.push(parseInt(optimized.hex.substr(i, 2), 16));
         dict['KEY_DATA'] = bytes;
     } else {
         dict['KEY_WIDTH'] = 0; dict['KEY_HEIGHT'] = 0;
@@ -63,4 +69,60 @@ function sendNextCard(cards, index) {
     }, function(e) {
         setTimeout(function() { sendNextCard(cards, index); }, 1000);
     });
+}
+
+// Helper to remove white borders from bitmap data
+function cropBitmap(width, height, hex) {
+    var bytes = [];
+    for (var i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+    
+    var stride = Math.ceil(width / 8);
+    if (bytes.length < stride * height) return { width: width, height: height, hex: hex };
+
+    var minX = width, maxX = 0, minY = height, maxY = 0;
+    var found = false;
+
+    // Scan for black pixels (1)
+    for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+            var byteIndex = y * stride + (x >> 3);
+            var bitIndex = 7 - (x % 8);
+            if ((bytes[byteIndex] >> bitIndex) & 1) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                found = true;
+            }
+        }
+    }
+
+    if (!found) return { width: width, height: height, hex: hex };
+
+    var newW = maxX - minX + 1;
+    var newH = maxY - minY + 1;
+    var newStride = Math.ceil(newW / 8);
+    var newBytes = new Array(newStride * newH);
+    for(var k=0; k<newBytes.length; k++) newBytes[k] = 0;
+    
+    for (var y = 0; y < newH; y++) {
+        for (var x = 0; x < newW; x++) {
+            var srcX = x + minX;
+            var srcY = y + minY;
+            var srcByte = srcY * stride + (srcX >> 3);
+            var srcBit = 7 - (srcX % 8);
+            if ((bytes[srcByte] >> srcBit) & 1) {
+                newBytes[y * newStride + (x >> 3)] |= (1 << (7 - (x % 8)));
+            }
+        }
+    }
+    
+    var newHex = "";
+    for (var i = 0; i < newBytes.length; i++) {
+        var h = newBytes[i].toString(16);
+        if (h.length < 2) h = "0" + h;
+        newHex += h;
+    }
+    
+    return { width: newW, height: newH, hex: newHex };
 }
