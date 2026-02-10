@@ -76,6 +76,22 @@ static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
             else graphics_fill_rect(ctx, GRect(p_pos, b_offset + r * scale, run_w_px, scale), 0, GCornerNone);
         }
     }
+    
+    // 8. Enforce Quiet Zones with Masking (if needed)
+    if (is_1d) {
+        // For 1D barcodes, the quiet zone must always be white for scanners.
+        graphics_context_set_fill_color(ctx, GColorWhite);
+
+        if (rotate) {
+            // Rotated: quiet zones are top and bottom
+            graphics_fill_rect(ctx, GRect(0, 0, b_axis_max, margin), 0, GCornerNone);
+            graphics_fill_rect(ctx, GRect(0, p_axis_max - margin, b_axis_max, margin), 0, GCornerNone);
+        } else {
+            // Not rotated: quiet zones are left and right
+            graphics_fill_rect(ctx, GRect(0, 0, margin, b_axis_max), 0, GCornerNone);
+            graphics_fill_rect(ctx, GRect(p_axis_max - margin, 0, margin, b_axis_max), 0, GCornerNone);
+        }
+    }
 }
 
 void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format, uint16_t w, uint16_t h, const uint8_t *bits) {
