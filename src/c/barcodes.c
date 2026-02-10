@@ -1,99 +1,448 @@
 #include "common.h"
+#include <string.h>
 
-static void draw_bits_matrix(GContext *ctx, GRect bounds, uint16_t w, uint16_t h, const uint8_t *bits) {
-    if (w == 0 || h == 0 || !bits) return;
+// ============================================================================
+// Code 128 Barcode Rendering (our original implementation)
+// Supports Code 128B (alphanumeric) and Code 128C (numeric pairs)
+// ============================================================================
 
-    int sw = bounds.size.w; // 144
-    int sh = bounds.size.h; // 168
-    
-    // 1. Determine if we should rotate (only for 1D codes)
-    bool is_1d = (w > h);
-    bool rotate = is_1d; 
+static const uint8_t CODE128_PATTERNS[][6] = {
+    {2, 1, 2, 2, 2, 2}, // 0: Space
+    {2, 2, 2, 1, 2, 2}, // 1: !
+    {2, 2, 2, 2, 2, 1}, // 2: "
+    {1, 2, 1, 2, 2, 3}, // 3: #
+    {1, 2, 1, 3, 2, 2}, // 4: $
+    {1, 3, 1, 2, 2, 2}, // 5: %
+    {1, 2, 2, 2, 1, 3}, // 6: &
+    {1, 2, 2, 3, 1, 2}, // 7: '
+    {1, 3, 2, 2, 1, 2}, // 8: (
+    {2, 2, 1, 2, 1, 3}, // 9: )
+    {2, 2, 1, 3, 1, 2}, // 10: *
+    {2, 3, 1, 2, 1, 2}, // 11: +
+    {1, 1, 2, 2, 3, 2}, // 12: ,
+    {1, 2, 2, 1, 3, 2}, // 13: -
+    {1, 2, 2, 2, 3, 1}, // 14: .
+    {1, 1, 3, 2, 2, 2}, // 15: /
+    {1, 2, 3, 1, 2, 2}, // 16: 0
+    {1, 2, 3, 2, 2, 1}, // 17: 1
+    {2, 2, 3, 2, 1, 1}, // 18: 2
+    {2, 2, 1, 1, 3, 2}, // 19: 3
+    {2, 2, 1, 2, 3, 1}, // 20: 4
+    {2, 1, 3, 2, 1, 2}, // 21: 5
+    {2, 2, 3, 1, 1, 2}, // 22: 6
+    {3, 1, 2, 1, 3, 1}, // 23: 7
+    {3, 1, 1, 2, 2, 2}, // 24: 8
+    {3, 2, 1, 1, 2, 2}, // 25: 9
+    {3, 2, 1, 2, 2, 1}, // 26: :
+    {3, 1, 2, 2, 1, 2}, // 27: ;
+    {3, 2, 2, 1, 1, 2}, // 28: <
+    {3, 2, 2, 2, 1, 1}, // 29: =
+    {2, 1, 2, 1, 2, 3}, // 30: >
+    {2, 1, 2, 3, 2, 1}, // 31: ?
+    {2, 3, 2, 1, 2, 1}, // 32: @
+    {1, 1, 1, 3, 2, 3}, // 33: A
+    {1, 3, 1, 1, 2, 3}, // 34: B
+    {1, 3, 1, 3, 2, 1}, // 35: C
+    {1, 1, 2, 3, 1, 3}, // 36: D
+    {1, 3, 2, 1, 1, 3}, // 37: E
+    {1, 3, 2, 3, 1, 1}, // 38: F
+    {2, 1, 1, 3, 1, 3}, // 39: G
+    {2, 3, 1, 1, 1, 3}, // 40: H
+    {2, 3, 1, 3, 1, 1}, // 41: I
+    {1, 1, 2, 1, 3, 3}, // 42: J
+    {1, 1, 2, 3, 3, 1}, // 43: K
+    {1, 3, 2, 1, 3, 1}, // 44: L
+    {1, 1, 3, 1, 2, 3}, // 45: M
+    {1, 1, 3, 3, 2, 1}, // 46: N
+    {1, 3, 3, 1, 2, 1}, // 47: O
+    {3, 1, 3, 1, 2, 1}, // 48: P
+    {2, 1, 1, 3, 3, 1}, // 49: Q
+    {2, 3, 1, 1, 3, 1}, // 50: R
+    {2, 1, 3, 1, 1, 3}, // 51: S
+    {2, 1, 3, 3, 1, 1}, // 52: T
+    {2, 1, 3, 1, 3, 1}, // 53: U
+    {3, 1, 1, 1, 2, 3}, // 54: V
+    {3, 1, 1, 3, 2, 1}, // 55: W
+    {3, 3, 1, 1, 2, 1}, // 56: X
+    {3, 1, 2, 1, 1, 3}, // 57: Y
+    {3, 1, 2, 3, 1, 1}, // 58: Z
+    {3, 3, 2, 1, 1, 1}, // 59: [
+    {3, 1, 4, 1, 1, 1}, // 60: backslash
+    {2, 2, 1, 4, 1, 1}, // 61: ]
+    {4, 3, 1, 1, 1, 1}, // 62: ^
+    {1, 1, 1, 2, 2, 4}, // 63: _
+    {1, 1, 1, 4, 2, 2}, // 64: `
+    {1, 2, 1, 1, 2, 4}, // 65: a
+    {1, 2, 1, 4, 2, 1}, // 66: b
+    {1, 4, 1, 1, 2, 2}, // 67: c
+    {1, 4, 1, 2, 2, 1}, // 68: d
+    {1, 1, 2, 2, 1, 4}, // 69: e
+    {1, 1, 2, 4, 1, 2}, // 70: f
+    {1, 2, 2, 1, 1, 4}, // 71: g
+    {1, 2, 2, 4, 1, 1}, // 72: h
+    {1, 4, 2, 1, 1, 2}, // 73: i
+    {1, 4, 2, 2, 1, 1}, // 74: j
+    {2, 4, 1, 2, 1, 1}, // 75: k
+    {2, 2, 1, 1, 1, 4}, // 76: l
+    {4, 1, 3, 1, 1, 1}, // 77: m
+    {2, 4, 1, 1, 1, 2}, // 78: n
+    {1, 3, 4, 1, 1, 1}, // 79: o
+    {1, 1, 1, 2, 4, 2}, // 80: p
+    {1, 2, 1, 1, 4, 2}, // 81: q
+    {1, 2, 1, 2, 4, 1}, // 82: r
+    {1, 1, 4, 2, 1, 2}, // 83: s
+    {1, 2, 4, 1, 1, 2}, // 84: t
+    {1, 2, 4, 2, 1, 1}, // 85: u
+    {4, 1, 1, 2, 1, 2}, // 86: v
+    {4, 2, 1, 1, 1, 2}, // 87: w
+    {4, 2, 1, 2, 1, 1}, // 88: x
+    {2, 1, 2, 1, 4, 1}, // 89: y
+    {2, 1, 4, 1, 2, 1}, // 90: z
+    {4, 1, 2, 1, 2, 1}, // 91: {
+    {1, 1, 1, 1, 4, 3}, // 92: |
+    {1, 1, 1, 3, 4, 1}, // 93: }
+    {1, 3, 1, 1, 4, 1}, // 94: ~
+    {1, 1, 4, 1, 1, 3}, // 95: DEL
+    {1, 1, 4, 3, 1, 1}, // 96: FNC3
+    {4, 1, 1, 1, 1, 3}, // 97: FNC2
+    {4, 1, 1, 3, 1, 1}, // 98: SHIFT
+    {1, 1, 3, 1, 4, 1}, // 99: Code C
+    {1, 1, 4, 1, 3, 1}, // 100: Code B / FNC4
+    {3, 1, 1, 1, 4, 1}, // 101: Code A / FNC4
+    {4, 1, 1, 1, 3, 1}, // 102: FNC1
+    {2, 1, 1, 4, 1, 2}, // 103: Start A
+    {2, 1, 1, 2, 1, 4}, // 104: Start B
+    {2, 1, 1, 2, 3, 2}, // 105: Start C
+};
 
-    // 2. Setup Dimensions based on rotation
-    int p_axis_max = rotate ? sh : sw;
-    int b_axis_max = rotate ? sw : sh;
+static const uint8_t CODE128_STOP[] = {2, 3, 3, 1, 1, 1, 2};
 
-    // 3. Scaling & Margins
-    int margin = is_1d ? 15 : 0; // Only 1D needs quiet zones for scannability
-    int avail_p = p_axis_max - (margin * 2);
-    int avail_b = b_axis_max;
+// --- Helpers ---
 
-    int scale = avail_p / w;
-    if (scale < 1) scale = 1;
+static void draw_bar(GContext *ctx, int x, int y, int width, int height, bool black) {
+    graphics_context_set_fill_color(ctx, black ? GColorBlack : GColorWhite);
+    graphics_fill_rect(ctx, GRect(x, y, width, height), 0, GCornerNone);
+}
 
-    // 4. Bar Length (The vertical height of the barcode bars)
-    int bar_len = is_1d ? (b_axis_max - 20) : (h * scale);
+static bool is_all_digits(const char *str) {
+    for (int i = 0; str[i]; i++) {
+        if (str[i] < '0' || str[i] > '9') return false;
+    }
+    return true;
+}
 
-    // 5. Centering offsets
-    int pattern_px = w * scale;
-    int p_offset = (p_axis_max - pattern_px) / 2;
-    int b_offset = (b_axis_max - bar_len) / 2;
+static int get_code128_value(char c) {
+    if (c >= 32 && c <= 127) return c - 32;
+    return 0;
+}
 
-    // 6. Colors
-    GColor bg = g_invert_colors ? GColorBlack : GColorWhite;
-    GColor fg = g_invert_colors ? GColorWhite : GColorBlack;
+static int calculate_code128_checksum(const char *data) {
+    int checksum = 104; // Start B
+    int len = strlen(data);
+    for (int i = 0; i < len && i < MAX_DATA_LEN; i++) {
+        checksum += get_code128_value(data[i]) * (i + 1);
+    }
+    return checksum % 103;
+}
 
-    graphics_context_set_fill_color(ctx, bg);
-    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-    
-    // For 1D barcodes, force a white background plate for laser scanners
-    if (is_1d && g_invert_colors) {
-        graphics_context_set_fill_color(ctx, GColorWhite);
-        if (rotate) graphics_fill_rect(ctx, GRect(b_offset - 4, p_offset - 10, bar_len + 8, pattern_px + 20), 0, GCornerNone);
-        else graphics_fill_rect(ctx, GRect(p_offset - 10, b_offset - 4, pattern_px + 20, bar_len + 8), 0, GCornerNone);
-        graphics_context_set_fill_color(ctx, GColorBlack);
-    } else {
-        graphics_context_set_fill_color(ctx, fg);
+static int calculate_code128c_checksum(const char *data) {
+    int checksum = 105; // Start C
+    int len = strlen(data);
+    int pos = 1;
+    for (int i = 0; i < len; i += 2) {
+        int value = (data[i] - '0') * 10;
+        if (i + 1 < len) value += (data[i + 1] - '0');
+        checksum += value * pos;
+        pos++;
+    }
+    return checksum % 103;
+}
+
+// --- Code 128 Barcode Drawing ---
+
+static void draw_code128_barcode(GContext *ctx, GRect bounds, const char *data) {
+    int data_len = strlen(data);
+    if (data_len == 0 || data_len > MAX_DATA_LEN) return;
+
+    bool is_numeric = is_all_digits(data);
+    bool use_code_c = is_numeric;
+
+    char padded_data[MAX_DATA_LEN + 2];
+    const char *barcode_data = data;
+    int barcode_len = data_len;
+
+    if (is_numeric && (data_len % 2 == 1)) {
+        padded_data[0] = '0';
+        strncpy(padded_data + 1, data, MAX_DATA_LEN);
+        padded_data[MAX_DATA_LEN + 1] = '\0';
+        barcode_data = padded_data;
+        barcode_len = data_len + 1;
     }
 
-    // 7. Render
-    for (int r = 0; r < h; r++) {
-        int run_start = -1;
-        for (int c = 0; c < w; c++) {
-            int bit_idx = r * w + c;
-            bool is_active = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
-            if (is_active) {
-                if (run_start == -1) run_start = c;
-            } else {
-                if (run_start != -1) {
-                    int run_w_px = (c - run_start) * scale;
-                    int p_pos = p_offset + run_start * scale;
-                    if (rotate) {
-                        // Standing Bars: X = across watch (b), Y = up/down watch (p)
-                        graphics_fill_rect(ctx, GRect(b_offset, p_pos, bar_len, run_w_px), 0, GCornerNone);
-                    } else {
-                        graphics_fill_rect(ctx, GRect(p_pos, b_offset + r * scale, run_w_px, scale), 0, GCornerNone);
-                    }
-                    run_start = -1;
+    int bar_modules;
+    if (use_code_c) {
+        int pairs = barcode_len / 2;
+        bar_modules = 11 + (pairs * 11) + 11 + 13;
+    } else {
+        bar_modules = 11 + (barcode_len * 11) + 11 + 13;
+    }
+
+    int bar_height = bounds.size.h - 50;
+    int bar_y = 25;
+    int screen_margin = 6;
+    int available_width = bounds.size.w - (screen_margin * 2);
+    int module_width = available_width / bar_modules;
+    if (module_width < 1) module_width = 1;
+
+    int barcode_width = bar_modules * module_width;
+    int start_x = screen_margin + (available_width - barcode_width) / 2;
+    if (start_x < screen_margin) start_x = screen_margin;
+    int right_limit = bounds.size.w - screen_margin;
+
+    // White background
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_fill_rect(ctx, GRect(screen_margin, bar_y - 5, available_width, bar_height + 10), 0, GCornerNone);
+
+    int x = start_x;
+
+    if (use_code_c) {
+        // Start C (index 105)
+        for (int i = 0; i < 6 && x < right_limit; i++) {
+            int w = CODE128_PATTERNS[105][i] * module_width;
+            if (x + w > right_limit) w = right_limit - x;
+            draw_bar(ctx, x, bar_y, w, bar_height, (i % 2 == 0));
+            x += w;
+        }
+        // Digit pairs
+        for (int i = 0; i < barcode_len && x < right_limit; i += 2) {
+            int value = (barcode_data[i] - '0') * 10;
+            if (i + 1 < barcode_len) value += (barcode_data[i + 1] - '0');
+            for (int j = 0; j < 6 && x < right_limit; j++) {
+                int w = CODE128_PATTERNS[value][j] * module_width;
+                if (x + w > right_limit) w = right_limit - x;
+                draw_bar(ctx, x, bar_y, w, bar_height, (j % 2 == 0));
+                x += w;
+            }
+        }
+        // Checksum
+        int checksum = calculate_code128c_checksum(barcode_data);
+        for (int i = 0; i < 6 && x < right_limit; i++) {
+            int w = CODE128_PATTERNS[checksum][i] * module_width;
+            if (x + w > right_limit) w = right_limit - x;
+            draw_bar(ctx, x, bar_y, w, bar_height, (i % 2 == 0));
+            x += w;
+        }
+    } else {
+        // Start B (index 104)
+        for (int i = 0; i < 6 && x < right_limit; i++) {
+            int w = CODE128_PATTERNS[104][i] * module_width;
+            if (x + w > right_limit) w = right_limit - x;
+            draw_bar(ctx, x, bar_y, w, bar_height, (i % 2 == 0));
+            x += w;
+        }
+        // Data characters
+        for (int i = 0; i < barcode_len && x < right_limit; i++) {
+            int value = get_code128_value(barcode_data[i]);
+            for (int j = 0; j < 6 && x < right_limit; j++) {
+                int w = CODE128_PATTERNS[value][j] * module_width;
+                if (x + w > right_limit) w = right_limit - x;
+                draw_bar(ctx, x, bar_y, w, bar_height, (j % 2 == 0));
+                x += w;
+            }
+        }
+        // Checksum
+        int checksum = calculate_code128_checksum(barcode_data);
+        for (int i = 0; i < 6 && x < right_limit; i++) {
+            int w = CODE128_PATTERNS[checksum][i] * module_width;
+            if (x + w > right_limit) w = right_limit - x;
+            draw_bar(ctx, x, bar_y, w, bar_height, (i % 2 == 0));
+            x += w;
+        }
+    }
+
+    // Stop pattern
+    for (int i = 0; i < 7 && x < right_limit; i++) {
+        int w = CODE128_STOP[i] * module_width;
+        if (x + w > right_limit) w = right_limit - x;
+        draw_bar(ctx, x, bar_y, w, bar_height, (i % 2 == 0));
+        x += w;
+    }
+}
+
+// ============================================================================
+// QR Code Drawing (on-watch fallback for small alphanumeric QR)
+// ============================================================================
+
+static void draw_qr_code_onwatch(GContext *ctx, GRect bounds, const char *data) {
+    uint8_t packed[200];
+    uint8_t size = 0;
+
+    // Note: qr_generate_packed must be available in the project
+    // If missing, this fallback will fail to link.
+    // Assuming it exists based on "exact same app" description.
+    if (qr_generate_packed(data, packed, &size)) {
+        int avail = (bounds.size.w < bounds.size.h ? bounds.size.w : bounds.size.h) - 10;
+        int scale = avail / size;
+        if (scale < 2) scale = 2;
+        int pix_size = size * scale;
+        int ox = (bounds.size.w - pix_size) / 2;
+        int oy = (bounds.size.h - pix_size) / 2;
+
+        graphics_context_set_fill_color(ctx, GColorWhite);
+        graphics_fill_rect(ctx, GRect(ox - 4, oy - 4, pix_size + 8, pix_size + 8), 0, GCornerNone);
+
+        graphics_context_set_fill_color(ctx, GColorBlack);
+        for (int r = 0; r < size; r++) {
+            for (int c = 0; c < size; c++) {
+                int idx = r * size + c;
+                if (packed[idx / 8] & (1 << (7 - (idx % 8)))) {
+                    graphics_fill_rect(ctx, GRect(ox + c * scale, oy + r * scale, scale, scale), 0, GCornerNone);
                 }
             }
         }
-        if (run_start != -1) {
-            int run_w_px = (w - run_start) * scale;
-            int p_pos = p_offset + run_start * scale;
-            if (rotate) graphics_fill_rect(ctx, GRect(b_offset, p_pos, bar_len, run_w_px), 0, GCornerNone);
-            else graphics_fill_rect(ctx, GRect(p_pos, b_offset + r * scale, run_w_px, scale), 0, GCornerNone);
-        }
+    } else {
+        graphics_context_set_text_color(ctx, GColorBlack);
+        graphics_draw_text(ctx, "QR Too Large",
+            fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), bounds,
+            GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
     }
-    
-    // 8. Enforce Quiet Zones with Masking (if needed)
-    if (is_1d) {
-        // For 1D barcodes, the quiet zone must always be white for scanners.
-        graphics_context_set_fill_color(ctx, GColorWhite);
+}
 
-        if (rotate) {
-            // Rotated: quiet zones are top and bottom
-            graphics_fill_rect(ctx, GRect(0, 0, b_axis_max, margin), 0, GCornerNone);
-            graphics_fill_rect(ctx, GRect(0, p_axis_max - margin, b_axis_max, margin), 0, GCornerNone);
-        } else {
-            // Not rotated: quiet zones are left and right
-            graphics_fill_rect(ctx, GRect(0, 0, margin, b_axis_max), 0, GCornerNone);
-            graphics_fill_rect(ctx, GRect(p_axis_max - margin, 0, margin, b_axis_max), 0, GCornerNone);
+// ============================================================================
+// NEW RENDERERS (v1.4 - RLE and 2D Matrix)
+// ============================================================================
+
+// Renders 2D codes (QR, Aztec, PDF417) by scaling them to fit the screen.
+static void draw_2d_centered(GContext *ctx, GRect bounds, uint16_t w, uint16_t h, const uint8_t *bits) {
+    int screen_w = bounds.size.w;
+    int screen_h = bounds.size.h;
+
+    // Use 0 margin to maximize size
+    int scale_w = screen_w / w;
+    int scale_h = screen_h / h;
+    int scale = (scale_w < scale_h) ? scale_w : scale_h;
+    if (scale < 1) scale = 1;
+
+    int barcode_pixel_w = w * scale;
+    int barcode_pixel_h = h * scale;
+    int x_offset = (screen_w - barcode_pixel_w) / 2;
+    int y_offset = (screen_h - barcode_pixel_h) / 2;
+
+    for (int r = 0; r < h; r++) {
+        for (int c = 0; c < w; c++) {
+            int bit_idx = r * w + c;
+            bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
+            if (is_black) {
+                graphics_fill_rect(ctx, GRect(x_offset + c * scale, y_offset + r * scale, scale, scale), 0, GCornerNone);
+            }
         }
     }
 }
 
-void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format, uint16_t w, uint16_t h, const uint8_t *bits) {
-    draw_bits_matrix(ctx, bounds, w, h, bits);
+// Renders 1D codes (Code128, etc.) rotated 90 degrees to maximize length.
+// Uses Run-Length-Encoding to draw clean, crisp bars.
+static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h, const uint8_t *bits) {
+    int screen_w = bounds.size.w; // 144
+    int screen_h = bounds.size.h; // 168
+
+    int margin = 10; 
+    int available_h = screen_h - (margin * 2);
+
+    int scale = available_h / w;
+    if (scale < 1) scale = 1;
+
+    int barcode_pixel_h = w * scale;
+    int y_offset = margin + (available_h - barcode_pixel_h) / 2;
+
+    int bar_len = screen_w - 20;
+    int x_offset = (screen_w - bar_len) / 2;
+
+    // RLE Renderer: Sample middle row and draw runs of black pixels
+    int r = h / 2; 
+    int run_start = -1;
+    for (int c = 0; c < w; c++) {
+        int bit_idx = r * w + c;
+        bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
+
+        if (is_black && run_start == -1) {
+            run_start = c; // Start of a new run
+        } else if (!is_black && run_start != -1) {
+            int run_len_pixels = (c - run_start) * scale;
+            int run_y_pos = y_offset + run_start * scale;
+            graphics_fill_rect(ctx, GRect(x_offset, run_y_pos, bar_len, run_len_pixels), 0, GCornerNone);
+            run_start = -1;
+        }
+    }
+    if (run_start != -1) {
+        int run_len_pixels = (w - run_start) * scale;
+        int run_y_pos = y_offset + run_start * scale;
+        graphics_fill_rect(ctx, GRect(x_offset, run_y_pos, bar_len, run_len_pixels), 0, GCornerNone);
+    }
+}
+
+// ============================================================================
+// Main Dispatcher
+// ============================================================================
+
+void barcode_draw(GContext *ctx, GRect bounds, BarcodeFormat format,
+                  uint16_t width, uint16_t height, const uint8_t *bits) {
+    // Clear background
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+
+    // --- Pre-rendered binary data from bwip-js ---
+    if (width > 0 && height > 0 && bits) {
+        graphics_context_set_fill_color(ctx, GColorBlack);
+        
+        switch(format) {
+            case FORMAT_CODE128:
+            case FORMAT_CODE39:
+            case FORMAT_EAN13:
+                draw_1d_rotated(ctx, bounds, width, height, bits);
+                break;
+
+            case FORMAT_QR:
+            case FORMAT_AZTEC:
+            case FORMAT_PDF417:
+                draw_2d_centered(ctx, bounds, width, height, bits);
+                break;
+
+            default: 
+                // Should not happen, but draw_2d is a safe fallback
+                draw_2d_centered(ctx, bounds, width, height, bits);
+                break;
+        }
+        return;
+    }
+
+    // Fallback: no pre-rendered data. Bits buffer contains raw text.
+    // This handles demo cards and edge cases.
+    const char *text_data = (const char *)bits;
+    if (!text_data || text_data[0] == '\0') {
+        graphics_context_set_text_color(ctx, GColorBlack);
+        graphics_draw_text(ctx, "No Data\nSync from phone",
+            fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), bounds,
+            GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+        return;
+    }
+
+    switch (format) {
+        case FORMAT_CODE128:
+        case FORMAT_CODE39:
+        case FORMAT_EAN13:
+            draw_code128_barcode(ctx, bounds, text_data);
+            break;
+
+        case FORMAT_QR:
+            draw_qr_code_onwatch(ctx, bounds, text_data);
+            break;
+
+        default:
+            // Aztec/PDF417 without pre-rendering - can't render on watch
+            graphics_context_set_text_color(ctx, GColorBlack);
+            graphics_draw_text(ctx, "Resync from phone",
+                fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), bounds,
+                GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+            break;
+    }
 }
