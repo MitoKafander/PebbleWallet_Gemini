@@ -1,6 +1,12 @@
 #include "common.h"
 #include <string.h>
 
+// Assuming MAX_DATA_LEN is defined in common.h, but if not, define it here for compilation
+#ifndef MAX_DATA_LEN
+#define MAX_DATA_LEN 100 // A reasonable max length for barcode string data (e.g., for Code128 input)
+#endif
+#include "qr_generate.h" // For qr_generate_packed prototype
+
 // ============================================================================
 // Code 128 Barcode Rendering (our original implementation)
 // Supports Code 128B (alphanumeric) and Code 128C (numeric pairs)
@@ -167,11 +173,11 @@ static void draw_code128_barcode(GContext *ctx, GRect bounds, const char *data) 
     bool is_numeric = is_all_digits(data);
     bool use_code_c = is_numeric;
 
-    char padded_data[MAX_DATA_LEN + 2];
     const char *barcode_data = data;
     int barcode_len = data_len;
 
     if (is_numeric && (data_len % 2 == 1)) {
+        char padded_data[MAX_DATA_LEN + 2]; // Declare only if needed to avoid unused variable warning
         padded_data[0] = '0';
         strncpy(padded_data + 1, data, MAX_DATA_LEN);
         padded_data[MAX_DATA_LEN + 1] = '\0';
