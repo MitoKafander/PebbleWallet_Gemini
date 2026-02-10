@@ -1,51 +1,29 @@
-# GeminiWallet Project Summary (v1.3.0)
-*Stable "Skunk Protocol" Build - Feb 9, 2026*
+# Project Summary
 
-This version represents a complete rewrite of the data transport and storage layer. It is now highly stable, crash-resistant, and capable of handling massive boarding pass data.
+## Overview
+**PebbleWallet Gemini** is a digital wallet application for Pebble smartwatches (Classic, Steel, Time, Time Steel, Round, 2). It allows users to store and display loyalty cards, membership cards, and tickets (QR, Aztec, PDF417, Code 128, EAN-13) on their wrist.
 
-## 🏗️ Architecture: The "Split & Skunk" Model
-To overcome Pebble's RAM (24KB) and AppMessage (2KB) limits, we implemented two major patterns:
+## Current Status
+**Stable / Maintenance**
+*   **Version:** 1.3.0
+*   **Last Update:** February 10, 2026
 
-1.  **Split Architecture (RAM Fix):**
-    *   **Problem:** Storing 10 cards * 1KB data in RAM crashed the watch.
-    *   **Solution:** We now only keep lightweight `WalletCardInfo` (Name/Type) in RAM.
-    *   **On-Demand:** Heavy barcode data is fetched from persistent storage *only* when the user clicks a card, and is freed immediately after.
+## Key Features
+*   **Offline Support:** Cards are stored on the watch.
+*   **Wide Format Support:** QR, Aztec, PDF417, Code 128, Code 39, EAN-13.
+*   **Cloud Config:** Settings and cards are managed via a web-based configuration page.
+*   **Optimized Rendering:** Uses integer scaling for 1D barcodes to ensure scannability on low-res screens.
 
-2.  **Skunk Protocol (Binary Transfer):**
-    *   **Problem:** Sending Hex strings (e.g. "A1F0") wasted 50% of bandwidth and storage.
-    *   **Solution:** The phone now converts data to **Raw Binary** before sending.
-    *   **Result:** Double the capacity, faster transfers, and no "maximum length" errors.
+## Recent Changes (Session 2026-02-10)
+1.  **Fixed EAN-13 & 1D Scanning:**
+    *   Implemented **integer scaling** for rotated 1D barcodes. This prevents "jitter" (irregular bar widths) caused by fractional scaling, ensuring codes are scannable.
+    *   Added **fixed 25px margins** (quiet zones) to prevent barcodes from touching screen edges.
+    *   Centered barcodes with a standardized width (114px).
+2.  **Fixed Fallback Logic:**
+    *   Prevented the app from trying to render EAN-13 using the Code 128 renderer when bitmap data is missing.
+3.  **Sync Workflow:**
+    *   Streamlined `SYNC_COMMANDS.txt` for use with Rebble/Codespaces.
 
-3.  **Ultra-Safe Storage (Persistence Fix):**
-    *   **Problem:** Pebble writes > 256 bytes often fail silently.
-    *   **Solution:** Data is sliced into **12 chunks of 100 bytes**.
-    *   **Safe Zone:** Keys are stored at index `24200+` to avoid collisions with other apps.
-
-## 🎨 UI & Rendering
--   **Smart Rotation:** Wide codes (EAN-13, Code 128) automatically rotate 90° to use the screen's 168px vertical axis.
--   **Quiet Zones:** 1D barcodes force a white background plate and (attempt to) enforce 20px margins for laser scanner compatibility.
--   **Max Scaling:** Aztec and QR codes use "Zero Margin" logic to hit the highest possible integer scale factor (3x/4x).
--   **Invert Colors:** Global setting for White-on-Black high contrast mode.
-
-## 🐛 Current Known Issues (For Next Session)
--   **1D Margins:** User reported Code 128/39 still touching screen edges despite the quiet zone logic. We may need to enforce a "hard clamp" or draw explicit white masking rectangles over the ends in the next session.
--   **Aztec Size:** Some Aztec codes remain at ~12mm (3x scale) because 4x scale is just *slightly* too wide for the 144px screen. This is likely a physical limit, but we could explore "cropping" non-essential corners to force 4x.
-
-## 🛠️ Commands Reference
-**Sync to Web:**
-```bash
-cd /workspaces/codespaces-pebble/GeminiWallet && 
-git fetch origin && 
-git reset --hard origin/main && 
-pebble clean && 
-pebble build
-```
-
-**Install:**
-```bash
-pebble install --phone <IP_ADDRESS>
-# OR use 'python3 -m http.server 8080' and scan the QR
-```
-
-**Recovery:**
-If data looks weird, always: **Phone Settings -> Save & Sync**. This regenerates the binary data and clears old storage keys.
+## Next Steps / Todo
+*   **Testing:** Verify EAN-13 scanning on physical hardware once charged.
+*   **Refinement:** If "huge" barcodes appear (scale < 1), consider a scrolling view or a warning, as downsampling 1D codes usually renders them useless.

@@ -1,48 +1,37 @@
-# Technical Context & Architecture Guide
+# Technical Context
 
-## Storage System (The "Ultra-Safe" Pattern)
-Pebble persistent storage is fragile. We use a custom sharding system to ensure reliability.
+## Barcode Rendering Strategy
+The app uses a hybrid approach to render barcodes on the Pebble watch.
 
-### Key Layout (Base: 24200)
-We allocated a high key range to avoid collisions with legacy data or other apps.
-*   **Keys Per Card:** 12
-*   **Max Cards:** 10
-*   **Total Keys Used:** 120 (Range: 24200 - 24320)
+### 1. Data Source (JavaScript Side)
+*   The phone app (`src/pkjs/index.js` or `pebble-js-app.js`) uses `bwip-js` (via a webview or internal logic) to generate the barcode bitmap.
+*   The bitmap is **cropped** to remove all whitespace/quiet zones to maximize resolution.
+*   It is sent to the watch as a raw bitstream.
 
-### Card Structure
-Each card uses `index * 12` as its offset.
-*   **Key 0:** `WalletCardInfo` (Struct) - Format, Name (32b), Desc (32b), Width (16b), Height (16b).
-*   **Key 1..11:** Raw Data Chunks.
-    *   **Chunk Size:** 100 bytes (Strictly enforced. Do not increase > 100 or writes will fail on older firmware).
-    *   **Max Capacity:** 11 * 100 = 1100 bytes binary (~2200 bytes hex/text).
+### 2. Watch Rendering (C Side)
+The C code in `src/c/barcodes.c` is responsible for scaling and drawing this bitmap.
 
-## Data Pipeline (The "Skunk Protocol")
-We do not send text. We send pre-processed bits.
+#### 2D Codes (QR, Aztec, PDF417)
+*   **Method:** `draw_2d_centered`
+*   **Scaling:** Uses nearest-neighbor scaling to fit the screen dimensions (144x168).
+*   **Margins:** Minimal (centered).
 
-1.  **Config Page (JS):** 
-    *   Uses `bwip-js` to render barcode to Canvas.
-    *   Reads pixels: Black = 1, White = 0.
-    *   Packs 8 pixels into 1 byte.
-2.  **AppMessage (Phone -> Watch):**
-    *   Sends `KEY_DATA` as a byte array (Blob).
-    *   Max payload ~2KB.
-3.  **Watch (C):**
-    *   Receives Blob.
-    *   Splits Blob into 100-byte chunks.
-    *   Writes chunks to Persistent Storage immediately.
-    *   **NEVER** stores the full blob in a global RAM buffer (would cause OOM).
+#### 1D Codes (Code 128, Code 39, EAN-13)
+*   **Method:** `draw_1d_rotated`
+*   **Orientation:** Rotated 90 degrees to use the full height of the watch (168px) as the "length" of the barcode.
+*   **Scaling (CRITICAL):**
+    *   **Integer Scaling:** The renderer calculates the maximum *integer* multiplier (`floor(available_h / source_width)`).
+    *   **Why?** Fractional scaling (e.g., 1.5x) creates irregular bar widths (jitter) which makes standard 1D barcodes unscannable on low-resolution displays like the Pebble.
+    *   **Margins:** Fixed 25px margin at top and bottom (relative to screen) to provide necessary "quiet zones".
+    *   **Fallback:** If the barcode is wider than the screen height (scale < 1), it falls back to fractional downsampling.
 
-## Rendering Logic
-*   **Smart Rotation:**
-    *   If `width > height * 2` (typical for 1D codes), we flip coordinates.
-    *   Screen X becomes Barcode Y. Screen Y becomes Barcode X.
-    *   This utilizes the 168px vertical resolution for the barcode's "width".
-*   **Scaling:**
-    *   Integer scaling only (`avail / width`).
-    *   **Aztec/QR:** Zero margins to attempt 4x scale.
-    *   **1D (128/39/EAN):** Forced 20px quiet zones at top/bottom (rotated) to help laser scanners.
+### 3. Fallback Rendering
+If the pre-rendered bitmap data is missing (e.g., demo cards or sync errors), the watch attempts to generate the barcode locally:
+*   **Code 128/39:** Native C renderer `draw_code128_barcode`.
+*   **QR:** Native C renderer `draw_qr_code_onwatch`.
+*   **Others (EAN-13, Aztec, PDF417):** Cannot be rendered locally; displays "Resync from phone".
 
-## Build Notes
-*   **SDK:** Pebble SDK 3.x / 4.3.
-*   **Icons:** Must be 1-bit or 8-bit palette PNGs. 25x25 (Menu) and 48x48 (App).
-*   **Versioning:** Must be `Major.Minor` (e.g., `1.3.0`). `1.3.1` is invalid.
+## Known Limitations
+1.  **Screen Resolution:** The Pebble's 144x168 resolution is the hard limit. Very dense barcodes (high capacity QR or long Code 128) may not be scannable if the module width drops below 1-2 pixels.
+2.  **Backlight:** Scanners struggle with the Pebble's reflective screen in low light if the backlight is off.
+3.  **Inversion:** Some scanners require black-on-white. The app supports an Invert setting which must be toggled if the scanner expects white-on-black.

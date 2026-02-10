@@ -348,21 +348,42 @@ static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h,
 
     // Use a fixed margin to ensure scannability (quiet zones)
     int margin = 25; 
-    int available_h = screen_h - (margin * 2); // 118 pixels of barcode length
+    int available_h = screen_h - (margin * 2); // ~118 pixels
 
     // Bar width (thickness on screen)
-    int bar_len = screen_w - 30; // 114 pixels wide
+    int bar_len = screen_w - 30; // ~114 pixels wide
     int x_offset = (screen_w - bar_len) / 2;
-    int y_offset = margin;
+    
+    // integer scaling logic to preserve bar ratios
+    int scale = available_h / w;
+    if (scale < 1) scale = 1; // Fallback for huge codes (will likely fail to scan but fits screen)
 
-    // RLE Renderer: Iterate over screen pixels and sample the barcode bitmap.
-    // This handles both upscaling (nearest-neighbor) and downscaling automatically.
+    int drawn_h = w * scale;
+    // If exact integer scaling makes it bigger than available space (shouldn't happen with integer math but safety first)
+    // or if we want to support shrinking:
+    if (drawn_h > available_h) {
+        // Fallback to "stretch to fit" logic for oversized codes
+        drawn_h = available_h;
+        scale = 0; // Signal to use fractional logic
+    }
+
+    int y_offset = margin + (available_h - drawn_h) / 2;
+
     int r = h / 2; // Sample middle row
     int run_start = -1;
     
-    for (int y = 0; y < available_h; y++) {
+    // Draw loop
+    for (int y = 0; y < drawn_h; y++) {
         // Map screen pixel 'y' back to bitmap module 'c'
-        int c = (y * w) / available_h;
+        int c;
+        if (scale > 0) {
+            c = y / scale; // Integer scaling (crisp 1px, 2px, etc.)
+        } else {
+            c = (y * w) / drawn_h; // Fractional scaling (nearest neighbor)
+        }
+        
+        if (c >= w) c = w - 1; // Safety clamp
+
         int bit_idx = r * w + c;
         bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
 
@@ -377,7 +398,7 @@ static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h,
     }
     // Finish last run
     if (run_start != -1) {
-        graphics_fill_rect(ctx, GRect(x_offset, y_offset + run_start, bar_len, available_h - run_start), 0, GCornerNone);
+        graphics_fill_rect(ctx, GRect(x_offset, y_offset + run_start, bar_len, drawn_h - run_start), 0, GCornerNone);
     }
 }
 
