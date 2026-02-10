@@ -72,12 +72,15 @@ function sendNextCard(cards, index) {
 }
 
 // Helper to remove white borders from bitmap data
+// Uses continuous bit packing (no row padding) to match the C renderer.
 function cropBitmap(width, height, hex) {
+    var totalBits = width * height;
+    var totalBytes = Math.ceil(totalBits / 8);
+
     var bytes = [];
     for (var i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
     
-    var stride = Math.ceil(width / 8);
-    if (bytes.length < stride * height) return { width: width, height: height, hex: hex };
+    if (bytes.length < totalBytes) return { width: width, height: height, hex: hex };
 
     var minX = width, maxX = 0, minY = height, maxY = 0;
     var found = false;
@@ -85,9 +88,10 @@ function cropBitmap(width, height, hex) {
     // Scan for black pixels (1)
     for (var y = 0; y < height; y++) {
         for (var x = 0; x < width; x++) {
-            var byteIndex = y * stride + (x >> 3);
-            var bitIndex = 7 - (x % 8);
-            if ((bytes[byteIndex] >> bitIndex) & 1) {
+            var bitIdx = y * width + x;
+            var byteIdx = Math.floor(bitIdx / 8);
+            var bitPos = 7 - (bitIdx % 8);
+            if ((bytes[byteIdx] >> bitPos) & 1) {
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
@@ -101,18 +105,21 @@ function cropBitmap(width, height, hex) {
 
     var newW = maxX - minX + 1;
     var newH = maxY - minY + 1;
-    var newStride = Math.ceil(newW / 8);
-    var newBytes = new Array(newStride * newH);
-    for(var k=0; k<newBytes.length; k++) newBytes[k] = 0;
+    var newTotalBits = newW * newH;
+    var newTotalBytes = Math.ceil(newTotalBits / 8);
+    var newBytes = new Array(newTotalBytes);
+    for(var k=0; k<newTotalBytes; k++) newBytes[k] = 0;
     
     for (var y = 0; y < newH; y++) {
         for (var x = 0; x < newW; x++) {
-            var srcX = x + minX;
-            var srcY = y + minY;
-            var srcByte = srcY * stride + (srcX >> 3);
-            var srcBit = 7 - (srcX % 8);
-            if ((bytes[srcByte] >> srcBit) & 1) {
-                newBytes[y * newStride + (x >> 3)] |= (1 << (7 - (x % 8)));
+            var srcBitIdx = (y + minY) * width + (x + minX);
+            var srcByteIdx = Math.floor(srcBitIdx / 8);
+            var srcBitPos = 7 - (srcBitIdx % 8);
+            if ((bytes[srcByteIdx] >> srcBitPos) & 1) {
+                var dstBitIdx = y * newW + x;
+                var dstByteIdx = Math.floor(dstBitIdx / 8);
+                var dstBitPos = 7 - (dstBitIdx % 8);
+                newBytes[dstByteIdx] |= (1 << dstBitPos);
             }
         }
     }

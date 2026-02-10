@@ -11,12 +11,14 @@ static MenuLayer *s_menu_layer;
 static Window *s_detail_window;
 static Layer *s_barcode_layer;
 static int s_current_index = 0;
+static bool s_loading = true;
 
 // --- AppMessage ---
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     if (dict_find(iter, MESSAGE_KEY_CMD_SYNC_START)) {
         g_card_count = 0;
         storage_save_count(0);
+        s_loading = false;
         
         Tuple *t_inv = dict_find(iter, MESSAGE_KEY_KEY_INVERT);
         if (t_inv) {
@@ -28,15 +30,16 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 
     Tuple *t_idx = dict_find(iter, MESSAGE_KEY_KEY_INDEX);
     Tuple *t_name = dict_find(iter, MESSAGE_KEY_KEY_NAME);
-    Tuple *t_desc = dict_find(iter, MESSAGE_KEY_KEY_DESCRIPTION);
     Tuple *t_data = dict_find(iter, MESSAGE_KEY_KEY_DATA);
     Tuple *t_fmt = dict_find(iter, MESSAGE_KEY_KEY_FORMAT);
-    Tuple *t_w = dict_find(iter, MESSAGE_KEY_KEY_WIDTH);
-    Tuple *t_h = dict_find(iter, MESSAGE_KEY_KEY_HEIGHT);
 
     if (t_idx && t_name && t_data && t_fmt) {
         int i = t_idx->value->int32;
         if (i >= 0 && i < MAX_CARDS) {
+            Tuple *t_desc = dict_find(iter, MESSAGE_KEY_KEY_DESCRIPTION);
+            Tuple *t_w = dict_find(iter, MESSAGE_KEY_KEY_WIDTH);
+            Tuple *t_h = dict_find(iter, MESSAGE_KEY_KEY_HEIGHT);
+
             strncpy(g_card_infos[i].name, t_name->value->cstring, MAX_NAME_LEN-1);
             strncpy(g_card_infos[i].description, t_desc ? t_desc->value->cstring : "", MAX_NAME_LEN-1);
             g_card_infos[i].format = (BarcodeFormat)t_fmt->value->int32;
@@ -49,6 +52,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
                 g_card_count = i + 1;
                 storage_save_count(g_card_count);
             }
+            s_loading = false;
             menu_layer_reload_data(s_menu_layer);
         }
     }
@@ -101,25 +105,68 @@ void ui_push_card_detail(int index) {
 }
 
 static uint16_t menu_get_num_rows(MenuLayer *menu_layer, uint16_t section_index, void *data) {
+    if (s_loading) return 1;
     return (g_card_count > 0) ? g_card_count : 1;
 }
 
+static int16_t menu_get_cell_height(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
+    return 52;
+}
+
 static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *data) {
-    if (g_card_count == 0) menu_cell_basic_draw(ctx, cell_layer, "No Cards", "Add via Settings", NULL);
-    else {
+    GRect bounds = layer_get_bounds(cell_layer);
+    
+    if (s_loading) {
+        graphics_context_set_text_color(ctx, GColorBlack);
+        graphics_draw_text(ctx, "Loading cards...", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+                           GRect(5, bounds.size.h / 2 - 12, bounds.size.w - 10, 24),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+        return;
+    }
+
+    if (g_card_count == 0) {
+        menu_cell_basic_draw(ctx, cell_layer, "No Cards", "Add via Settings", NULL);
+    } else {
         WalletCardInfo *c = &g_card_infos[cell_index->row];
-        menu_cell_basic_draw(ctx, cell_layer, c->name, c->description, NULL);
+        
+        // Draw card name
+        graphics_context_set_text_color(ctx, GColorBlack);
+        graphics_draw_text(ctx, c->name, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                           GRect(5, 2, bounds.size.w - 10, 28),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+        // Subtitle
+        const char *subtitle;
+        char fmt_subtitle[MAX_NAME_LEN];
+        if (strlen(c->description) > 0) {
+            subtitle = c->description;
+        } else {
+            static const char *names[] = {"Code 128", "Code 39", "EAN-13", "QR Code", "Aztec", "PDF417"};
+            int fi = (int)c->format;
+            if (fi >= 0 && fi <= 5) snprintf(fmt_subtitle, sizeof(fmt_subtitle), "%s", names[fi]);
+            else snprintf(fmt_subtitle, sizeof(fmt_subtitle), "Barcode");
+            subtitle = fmt_subtitle;
+        }
+
+        graphics_draw_text(ctx, subtitle, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                           GRect(5, 28, bounds.size.w - 10, 18),
+                           GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     }
 }
 
 static void menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
-    if (g_card_count > 0) ui_push_card_detail(cell_index->row);
+    if (!s_loading && g_card_count > 0) ui_push_card_detail(cell_index->row);
 }
 
 static void main_window_load(Window *window) {
     Layer *root = window_get_root_layer(window);
     s_menu_layer = menu_layer_create(layer_get_bounds(root));
-    menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks){ .get_num_rows = menu_get_num_rows, .draw_row = menu_draw_row, .select_click = menu_select });
+    menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks){
+        .get_num_rows = menu_get_num_rows,
+        .get_cell_height = menu_get_cell_height,
+        .draw_row = menu_draw_row,
+        .select_click = menu_select
+    });
     menu_layer_set_click_config_onto_window(s_menu_layer, window);
     layer_add_child(root, menu_layer_get_layer(s_menu_layer));
 }
@@ -130,6 +177,8 @@ static void main_window_unload(Window *window) {
 
 static void init(void) {
     storage_load_settings();
+    if (g_card_count > 0) s_loading = false;
+    
     app_message_register_inbox_received(inbox_received_handler);
     app_message_open(2048, 256);
     s_main_window = window_create();

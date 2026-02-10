@@ -318,7 +318,6 @@ static void draw_2d_centered(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int screen_w = bounds.size.w;
     int screen_h = bounds.size.h;
 
-    // Use 0 margin to maximize size
     int scale_w = screen_w / w;
     int scale_h = screen_h / h;
     int scale = (scale_w < scale_h) ? scale_w : scale_h;
@@ -329,9 +328,9 @@ static void draw_2d_centered(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
     int x_offset = (screen_w - barcode_pixel_w) / 2;
     int y_offset = (screen_h - barcode_pixel_h) / 2;
 
-    for (int r = 0; r < h; r++) {
-        for (int c = 0; c < w; c++) {
-            int bit_idx = r * w + c;
+    for (int r = 0; r < (int)h; r++) {
+        for (int c = 0; c < (int)w; c++) {
+            int bit_idx = r * w + c; // Continuous packing
             bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
             if (is_black) {
                 graphics_fill_rect(ctx, GRect(x_offset + c * scale, y_offset + r * scale, scale, scale), 0, GCornerNone);
@@ -341,64 +340,51 @@ static void draw_2d_centered(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
 }
 
 // Renders 1D codes (Code128, etc.) rotated 90 degrees to maximize length.
-// Uses a sampling-based RLE renderer to ensure the barcode always fits the screen perfectly.
+// Uses module-based integer scaling to preserve exact bar width ratios.
 static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h, const uint8_t *bits) {
-    int screen_w = bounds.size.w; // 144
-    int screen_h = bounds.size.h; // 168
+    int screen_w = bounds.size.w;
+    int screen_h = bounds.size.h;
 
-    // Use a fixed margin to ensure scannability (quiet zones)
-    int margin = 25; 
-    int available_h = screen_h - (margin * 2); // ~118 pixels
+    // Quiet zone margin (10px each end)
+    int margin = 10; 
+    int available_h = screen_h - (margin * 2);
 
-    // Bar width (thickness on screen)
-    int bar_len = screen_w - 30; // ~114 pixels wide
-    int x_offset = (screen_w - bar_len) / 2;
-    
-    // integer scaling logic to preserve bar ratios
+    // Integer scaling only to preserve critical bar ratios
     int scale = available_h / w;
-    if (scale < 1) scale = 1; // Fallback for huge codes (will likely fail to scan but fits screen)
+    if (scale < 1) scale = 1;
 
     int drawn_h = w * scale;
-    // If exact integer scaling makes it bigger than available space (shouldn't happen with integer math but safety first)
-    // or if we want to support shrinking:
-    if (drawn_h > available_h) {
-        // Fallback to "stretch to fit" logic for oversized codes
-        drawn_h = available_h;
-        scale = 0; // Signal to use fractional logic
-    }
-
     int y_offset = margin + (available_h - drawn_h) / 2;
 
-    int r = h / 2; // Sample middle row
-    int run_start = -1;
-    
-    // Draw loop
-    for (int y = 0; y < drawn_h; y++) {
-        // Map screen pixel 'y' back to bitmap module 'c'
-        int c;
-        if (scale > 0) {
-            c = y / scale; // Integer scaling (crisp 1px, 2px, etc.)
-        } else {
-            c = (y * w) / drawn_h; // Fractional scaling (nearest neighbor)
-        }
-        
-        if (c >= w) c = w - 1; // Safety clamp
+    // Bar length (horizontal thickness on screen)
+    int bar_len = screen_w - 20;
+    int x_offset = (screen_w - bar_len) / 2;
 
-        int bit_idx = r * w + c;
+    // Sample middle row of bitmap (all rows identical for 1D)
+    int r = h / 2; 
+
+    // RLE: group consecutive black modules into single draw calls for efficiency and crispness
+    int run_start = -1;
+    for (int c = 0; c < (int)w; c++) {
+        int bit_idx = r * w + c; // Continuous packing
         bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
 
         if (is_black) {
-            if (run_start == -1) run_start = y;
+            if (run_start == -1) run_start = c;
         } else {
             if (run_start != -1) {
-                graphics_fill_rect(ctx, GRect(x_offset, y_offset + run_start, bar_len, y - run_start), 0, GCornerNone);
+                int run_px = (c - run_start) * scale;
+                int y_pos = y_offset + run_start * scale;
+                graphics_fill_rect(ctx, GRect(x_offset, y_pos, bar_len, run_px), 0, GCornerNone);
                 run_start = -1;
             }
         }
     }
-    // Finish last run
+    // Flush last run
     if (run_start != -1) {
-        graphics_fill_rect(ctx, GRect(x_offset, y_offset + run_start, bar_len, drawn_h - run_start), 0, GCornerNone);
+        int run_px = (w - run_start) * scale;
+        int y_pos = y_offset + run_start * scale;
+        graphics_fill_rect(ctx, GRect(x_offset, y_pos, bar_len, run_px), 0, GCornerNone);
     }
 }
 
