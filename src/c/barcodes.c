@@ -341,43 +341,43 @@ static void draw_2d_centered(GContext *ctx, GRect bounds, uint16_t w, uint16_t h
 }
 
 // Renders 1D codes (Code128, etc.) rotated 90 degrees to maximize length.
-// Uses Run-Length-Encoding to draw clean, crisp bars.
+// Uses a sampling-based RLE renderer to ensure the barcode always fits the screen perfectly.
 static void draw_1d_rotated(GContext *ctx, GRect bounds, uint16_t w, uint16_t h, const uint8_t *bits) {
     int screen_w = bounds.size.w; // 144
     int screen_h = bounds.size.h; // 168
 
-    int margin = 30; 
-    int available_h = screen_h - (margin * 2);
+    // Use a fixed margin to ensure scannability (quiet zones)
+    int margin = 25; 
+    int available_h = screen_h - (margin * 2); // 118 pixels of barcode length
 
-    int scale = available_h / w;
-    if (scale < 1) scale = 1;
-
-    int barcode_pixel_h = w * scale;
-    int y_offset = margin + (available_h - barcode_pixel_h) / 2;
-
-    int bar_len = screen_w - 20;
+    // Bar width (thickness on screen)
+    int bar_len = screen_w - 30; // 114 pixels wide
     int x_offset = (screen_w - bar_len) / 2;
+    int y_offset = margin;
 
-    // RLE Renderer: Sample middle row and draw runs of black pixels
-    int r = h / 2; 
+    // RLE Renderer: Iterate over screen pixels and sample the barcode bitmap.
+    // This handles both upscaling (nearest-neighbor) and downscaling automatically.
+    int r = h / 2; // Sample middle row
     int run_start = -1;
-    for (int c = 0; c < w; c++) {
+    
+    for (int y = 0; y < available_h; y++) {
+        // Map screen pixel 'y' back to bitmap module 'c'
+        int c = (y * w) / available_h;
         int bit_idx = r * w + c;
         bool is_black = (bits[bit_idx / 8] & (1 << (7 - (bit_idx % 8))));
 
-        if (is_black && run_start == -1) {
-            run_start = c; // Start of a new run
-        } else if (!is_black && run_start != -1) {
-            int run_len_pixels = (c - run_start) * scale;
-            int run_y_pos = y_offset + run_start * scale;
-            graphics_fill_rect(ctx, GRect(x_offset, run_y_pos, bar_len, run_len_pixels), 0, GCornerNone);
-            run_start = -1;
+        if (is_black) {
+            if (run_start == -1) run_start = y;
+        } else {
+            if (run_start != -1) {
+                graphics_fill_rect(ctx, GRect(x_offset, y_offset + run_start, bar_len, y - run_start), 0, GCornerNone);
+                run_start = -1;
+            }
         }
     }
+    // Finish last run
     if (run_start != -1) {
-        int run_len_pixels = (w - run_start) * scale;
-        int run_y_pos = y_offset + run_start * scale;
-        graphics_fill_rect(ctx, GRect(x_offset, run_y_pos, bar_len, run_len_pixels), 0, GCornerNone);
+        graphics_fill_rect(ctx, GRect(x_offset, y_offset + run_start, bar_len, available_h - run_start), 0, GCornerNone);
     }
 }
 
